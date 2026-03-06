@@ -7,6 +7,8 @@ export interface NoteItem {
     title: string;
     tags?: string[];
     updated_at: number;
+    isDeleted?: boolean; // For sync tombstones
+    parentPath?: string; // Vault path of parent folder (e.g. "Work")
 }
 
 export interface NoteContent {
@@ -56,7 +58,7 @@ export async function updateContent(id: number, content: string) {
 }
 
 export async function deleteItem(id: number): Promise<void> {
-    // Use a transaction to safely delete an item and all its nested descendants
+    // Soft delete to handle sync
     return db.transaction('rw', db.items, db.contents, async () => {
         const item = await db.items.get(id);
         if (!item) return;
@@ -64,11 +66,11 @@ export async function deleteItem(id: number): Promise<void> {
         if (item.type === 'folder') {
             const children = await db.items.where('parentId').equals(id).toArray();
             for (const child of children) {
-                if (child.id) await deleteItem(child.id); // Recursive delete
+                if (child.id) await deleteItem(child.id); // Recursive soft delete
             }
         }
 
-        await db.items.delete(id);
+        await db.items.update(id, { isDeleted: true, updated_at: Date.now() });
         await db.contents.delete(id);
     });
 }
@@ -79,10 +81,10 @@ export async function moveItem(id: number, newParentId: number) {
 
 // Fetch files and folders at root
 export async function getRootItems() {
-    return db.items.where('parentId').equals(0).toArray();
+    return db.items.where('parentId').equals(0).filter(item => !item.isDeleted).toArray();
 }
 
 // Fetch children of a specific folder
 export async function getChildren(parentId: number) {
-    return db.items.where('parentId').equals(parentId).toArray();
+    return db.items.where('parentId').equals(parentId).filter(item => !item.isDeleted).toArray();
 }

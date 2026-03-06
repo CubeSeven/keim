@@ -8,7 +8,7 @@ Based on the architectural blueprint research, here is the master plan for build
 - **Styling:** Tailwind CSS for a utility-first, unbreakable design system and native dark mode.
 - **Persistence:** IndexedDB via Dexie.js for asynchronous, zero-latency local storage.
 - **Editor:** CodeMirror 6 for modular, high-performance Markdown editing.
-- **Cloud Sync:** Google Drive API (`appDataFolder`) via direct REST (fetch API).
+- **Cloud Sync:** OneDrive API (`AppFolder`) via Microsoft Graph and MSAL.js.
 - **PWA / Offline:** `vite-plugin-pwa` with custom Service Worker for offline resilience.
 
 ## 2. Implementation Phases
@@ -34,12 +34,12 @@ Based on the architectural blueprint research, here is the master plan for build
 - Remove unnecessary programming-focused CodeMirror features (line numbers, gutter) to keep it minimal.
 - Implement an update listener that debounces editor changes and saves them locally without blocking the UI rendering threads.
 
-### Phase 5: Google Drive Cloud Sync
-- Integrate Google Identity Services (GIS) to authorize access to the hidden `appDataFolder`.
+### Phase 5: OneDrive Cloud Sync
+- Integrate Microsoft Authentication Library (MSAL.js) for easy "One-Click" login.
 - Build the `SyncService`:
   - Diff local and remote timestamps using a "Last-Write-Wins" policy.
-  - Push changes via REST `PATCH` atomic operations without reloading the whole DB.
-  - Enable background sync integration for when the app regains connectivity.
+  - Use Microsoft Graph `delta` queries if possible, or direct file operations in the `AppFolder`.
+  - Enable background sync for seamless roaming across devices.
 
 ### Phase 6: Polish, Testing & Deployment
 - Set up an "Update Ready" prompt via the Service Worker.

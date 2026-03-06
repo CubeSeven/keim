@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
+import { triggerAutoSync } from '../lib/sync';
+import { getStorageMode, writeNoteToVault, notePathFromTitle } from '../lib/vault';
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react';
 import { Crepe } from '@milkdown/crepe';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
@@ -59,18 +61,25 @@ export default function Editor({ noteId }: EditorProps) {
     const debouncedSaveContent = useCallback(
         (markdown: string) => {
             if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
-            saveTimeoutRef.current = window.setTimeout(() => {
-                db.contents.put({ id: noteId, content: markdown });
-                db.items.update(noteId, { updated_at: Date.now() });
+            saveTimeoutRef.current = window.setTimeout(async () => {
+                await db.contents.put({ id: noteId, content: markdown });
+                await db.items.update(noteId, { updated_at: Date.now() });
+                // Write to vault if active
+                if (note && getStorageMode() === 'vault') {
+                    const path = notePathFromTitle(note.title, note.parentPath ?? '');
+                    writeNoteToVault(path, markdown).catch(console.warn);
+                }
+                triggerAutoSync();
             }, 500);
         },
-        [noteId]
+        [noteId, note]
     );
 
     const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newTitle = e.target.value;
         setTitle(newTitle);
         db.items.update(noteId, { title: newTitle, updated_at: Date.now() });
+        triggerAutoSync();
     };
 
     if (!note || noteContent === undefined) return null;

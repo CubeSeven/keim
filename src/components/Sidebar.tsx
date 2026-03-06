@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, addItem } from '../lib/db';
-import { Folder, FolderOpen, FileText, Plus, Trash2, X, Check, Settings } from 'lucide-react';
+import { Folder, FolderOpen, FileText, Plus, Trash2, X, Check, Settings, HardDrive, Globe, Cloud, CloudOff, RefreshCw, AlertCircle } from 'lucide-react';
+import type { SyncStatus } from '../App';
 
 interface SidebarProps {
     selectedNoteId: number | null;
@@ -9,10 +10,14 @@ interface SidebarProps {
     isOpen: boolean;
     onClose: () => void;
     onOpenSettings: () => void;
+    vaultName?: string;
+    storageMode?: 'vault' | 'indexeddb' | 'unset';
+    syncStatus?: SyncStatus;
+    onSync?: () => void;
 }
 
-export default function Sidebar({ selectedNoteId, onSelectNote, isOpen, onClose, onOpenSettings }: SidebarProps) {
-    const items = useLiveQuery(() => db.items.toArray());
+export default function Sidebar({ selectedNoteId, onSelectNote, isOpen, onClose, onOpenSettings, vaultName, storageMode, syncStatus = 'disconnected', onSync }: SidebarProps) {
+    const items = useLiveQuery(() => db.items.filter(item => !item.isDeleted).toArray());
 
     const tree = useMemo(() => {
         if (!items) return [];
@@ -75,9 +80,15 @@ export default function Sidebar({ selectedNoteId, onSelectNote, isOpen, onClose,
                 `}
             >
                 <div className="flex flex-col h-full">
-                    <div className="p-4 flex items-center justify-end border-b border-light-bg dark:border-dark-bg shrink-0">
-                        {/* Title removed for minimal UI */}
-                        <div className="flex gap-1 items-center">
+                    <div className="p-4 flex items-center justify-between border-b border-light-bg dark:border-dark-bg shrink-0">
+                        {/* Vault name or app name */}
+                        {vaultName ? (
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-dark-bg/60 dark:text-light-bg/60 min-w-0 truncate">
+                                <span className="text-indigo-500">📁</span>
+                                <span className="truncate">{vaultName}</span>
+                            </div>
+                        ) : <div />}
+                        <div className="flex gap-1 items-center shrink-0">
                             <button
                                 onClick={() => handleAddAtRoot('note')}
                                 className={headerIconBtnClass}
@@ -107,15 +118,34 @@ export default function Sidebar({ selectedNoteId, onSelectNote, isOpen, onClose,
                         ))}
                     </div>
 
-                    {/* Settings Button */}
-                    <div className="p-3 border-t border-light-bg dark:border-dark-bg shrink-0">
+                    {/* Bottom Status Bar */}
+                    <div className="p-2 border-t border-light-bg dark:border-dark-bg shrink-0 flex items-center gap-2">
+                        {/* Settings Icon-only button */}
                         <button
                             onClick={onOpenSettings}
-                            className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-light-bg dark:hover:bg-dark-bg text-dark-bg dark:text-light-bg transition-colors whitespace-nowrap"
+                            className="p-1.5 rounded-md hover:bg-light-bg dark:hover:bg-dark-bg text-dark-bg dark:text-light-bg transition-colors shrink-0"
+                            title="Settings"
                         >
-                            <Settings size={18} className="opacity-70 shrink-0" />
-                            <span className="text-sm font-medium">Settings</span>
+                            <Settings size={16} className="opacity-70" />
                         </button>
+
+                        {/* Storage type label */}
+                        <div className="flex items-center gap-1.5 text-xs text-dark-bg/50 dark:text-light-bg/50 min-w-0 flex-1">
+                            {storageMode === 'vault' ? (
+                                <>
+                                    <HardDrive size={12} className="shrink-0" />
+                                    <span className="truncate font-medium">Local Vault</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Globe size={12} className="shrink-0" />
+                                    <span className="truncate font-medium">Browser</span>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Cloud sync status */}
+                        <SyncStatusBadge status={syncStatus} onSync={onSync} />
                     </div>
                 </div>
             </div>
@@ -226,5 +256,32 @@ function TreeNode({ item, selectedId, onSelect, level }: { item: any, selectedId
                 </div>
             )}
         </div>
+    );
+}
+
+function SyncStatusBadge({ status, onSync }: { status: SyncStatus, onSync?: () => void }) {
+    const config: Record<SyncStatus, { icon: any, text: string, color: string, spin?: boolean }> = {
+        idle: { icon: Cloud, text: 'Synced', color: 'text-dark-bg/40 dark:text-light-bg/40', spin: false },
+        syncing: { icon: RefreshCw, text: 'Syncing...', color: 'text-indigo-500', spin: true },
+        synced: { icon: Check, text: 'Success', color: 'text-emerald-500', spin: false },
+        error: { icon: AlertCircle, text: 'Sync Error', color: 'text-amber-500', spin: false },
+        disconnected: { icon: CloudOff, text: 'Offline', color: 'text-dark-bg/20 dark:text-light-bg/20', spin: false }
+    };
+
+    const { icon: Icon, text, color, spin } = config[status] || config.disconnected;
+
+    return (
+        <button
+            onClick={(e) => {
+                e.stopPropagation();
+                onSync?.();
+            }}
+            disabled={status === 'syncing'}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-full bg-dark-bg/5 dark:bg-light-bg/5 hover:bg-dark-bg/10 dark:hover:bg-light-bg/10 transition-colors shrink-0 ${color}`}
+            title={status === 'disconnected' ? 'Cloud sync not connected' : 'Click to sync now'}
+        >
+            <Icon size={12} className={spin ? 'animate-spin' : ''} />
+            <span className="text-[10px] font-bold uppercase tracking-wider">{text}</span>
+        </button>
     );
 }
