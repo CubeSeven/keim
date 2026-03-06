@@ -1,0 +1,190 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-light-bg: #FEFEFE;
+  --color-light-ui: #F3F3F3;
+  --color-dark-bg: #020202;
+  --color-dark-ui: #161616;
+}
+
+@layer base {
+  body {
+    @apply bg-light-bg text-dark-bg dark:bg-dark-bg dark:text-light-bg antialiased transition-colors duration-200;
+    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  }
+}
+
+/* ============================================================ */
+/* Milkdown / Crepe — Notion-style polish                       */
+/* ============================================================ */
+
+/* --- Crepe design token overrides --- */
+:root,
+.light {
+  --crepe-color-background: transparent;
+  --crepe-color-surface: #ffffff;
+  --crepe-color-on-surface: #111111;
+  --crepe-color-border: rgba(0, 0, 0, 0.08);
+
+  /* Slash menu & tooltips */
+  --crepe-color-tooltip-bg: #ffffff;
+  --crepe-color-tooltip-fg: #111111;
+
+  /* Inline code */
+  --crepe-color-inline-code-bg: rgba(135, 131, 120, 0.15);
+}
+
+.dark {
+  --crepe-color-background: transparent;
+  --crepe-color-surface: #1e1e1e;
+  --crepe-color-on-surface: #e6e6e6;
+  --crepe-color-border: rgba(255, 255, 255, 0.08);
+  --crepe-color-tooltip-bg: #2c2c2c;
+  --crepe-color-tooltip-fg: #e6e6e6;
+  --crepe-color-inline-code-bg: rgba(200, 200, 200, 0.12);
+}
+
+/* --- Outer wrapper fills the flex slot --- */
+.milkdown-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: visible;
+  /* Let slash menu escape */
+  position: relative;
+}
+
+/* --- The .milkdown ProseMirror host --- */
+.milkdown-wrapper .milkdown {
+  background: transparent !important;
+  box-shadow: none !important;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif !important;
+  font-size: 1rem;
+  line-height: 1.7;
+  color: inherit;
+  flex: 1;
+  padding: 0 !important;
+}
+
+/* --- ProseMirror content area --- */
+.milkdown-wrapper .milkdown .ProseMirror {
+  outline: none;
+  padding: 0;
+  min-height: 200px;
+  color: inherit;
+  caret-color: currentColor;
+}
+
+/* Empty doc placeholder */
+.milkdown-wrapper .milkdown .ProseMirror p.is-empty::before,
+.milkdown-wrapper .milkdown .ProseMirror .is-empty::before {
+  color: #9b9a97;
+  content: attr(data-placeholder);
+  pointer-events: none;
+  position: absolute;
+}
+
+/* --- Typography — Notion-like --- */
+.milkdown-wrapper .ProseMirror h1,
+.milkdown-wrapper .ProseMirror h2,
+.milkdown-wrapper .ProseMirror h3,
+.milkdown-wrapper .ProseMirror h4,
+.milkdown-wrapper .ProseMirror h5,
+.milkdown-wrapper .ProseMirror h6 {
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif !important;
+}
+
+.milkdown-wrapper .ProseMirror h1 {
+  font-size: 1.875rem;
+  /* 30px */
+  font-weight: 700;
+  line-height: 1.3;
+  margin-top: 1.5rem;
+  margin-bottom: 0.25rem;
+  letter-spacing: -0.01em;
+}
+
+.milkdown-wrapper .ProseMirror h2 {
+  font-size: 1.375rem;
+  /* 22px */
+  font-weight: 700;
+  line-height: 1.3;
+  margin-top: 1.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.milkdown-wrapper .ProseMirror h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.milkdown-wrapper .ProseMirror p {
+  margin-top: 0;
+  margin-bottom: 0.15rem;
+  font-size: 1rem;
+}
+
+.milkdown-wrapper .ProseMirror ul,
+.milkdown-wrapper .ProseMirror ol {
+  padding-left: 1.5rem;
+  margin: 0.25rem 0;
+}
+
+.milkdown-wrapper .ProseMirror li {
+  margin: 0.1rem 0;
+}
+
+.milkdown-wrapper .ProseMirror blockquote {
+  border-left: 3px solid rgba(55, 53, 47, 0.2);
+  margin: 0.5rem 0;
+  padding: 0.25rem 0.75rem;
+  color: #6b6b6b;
+}
+
+.dark .milkdown-wrapper .ProseMirror blockquote {
+  border-left-color: rgba(255, 255, 255, 0.2);
+  color: #999;
+}
+
+.milkdown-wrapper .ProseMirror code {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.875em;
+  background: var(--crepe-color-inline-code-bg);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+}
+
+.milkdown-wrapper .ProseMirror pre {
+  background: rgba(135, 131, 120, 0.1);
+  border-radius: 6px;
+  padding: 1rem;
+  overflow-x: auto;
+  font-size: 0.875rem;
+}
+
+.dark .milkdown-wrapper .ProseMirror pre {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.milkdown-wrapper .ProseMirror hr {
+  border: none;
+  border-top: 1px solid rgba(55, 53, 47, 0.15);
+  margin: 1.5rem 0;
+}
+
+.dark .milkdown-wrapper .ProseMirror hr {
+  border-top-color: rgba(255, 255, 255, 0.12);
+}
+
+/* --- Toolbar / Menu aesthetics — colors only, no layout overrides --- */
+.milkdown-wrapper [data-slash-menu],
+[class*="milkdown-toolbar"],
+[class*="crepe-toolbar"] {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
+}
