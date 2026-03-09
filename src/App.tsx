@@ -1,33 +1,92 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Editor from './components/Editor';
-import { db, addItem } from './lib/db';
+import { db, addItem, getFullPath } from './lib/db';
 import { Menu } from 'lucide-react';
 import SettingsModal from './components/SettingsModal';
 import WelcomeScreen from './components/WelcomeScreen';
-import SyncProgressModal from './components/SyncProgressModal';
-import { authorizeDropbox, syncNotesWithDrive, isDriveConnected, type SyncProgress } from './lib/sync';
+import { authorizeDropbox, syncNotesWithDrive, isDriveConnected, initSync } from './lib/sync';
 import {
   getStorageMode, setStorageMode,
   openVaultPicker, restoreVaultHandle, getVaultName,
   readVaultTree, readNoteContent
 } from './lib/vault';
+import { CommandPalette } from './components/CommandPalette';
+import { buildSearchIndex } from './lib/search';
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'disconnected';
 
 type AppState = 'loading' | 'welcome' | 'restore-vault' | 'ready';
 
 function App() {
-  const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [selectedNoteId, setSelectedNoteId] = useState<number | null>(() => {
+    const savedId = localStorage.getItem('keim_selected_note_id');
+    return savedId ? parseInt(savedId, 10) : null;
+  });
+  const [selectedNotePath, setSelectedNotePath] = useState<string | null>(() => {
+    return localStorage.getItem('keim_selected_note_path');
+  });
+  // Ref so loadVaultIntoDb can read the latest selected path without being a reactive dep.
+  const selectedNotePathRef = useRef<string | null>(selectedNotePath);
+  useEffect(() => { selectedNotePathRef.current = selectedNotePath; }, [selectedNotePath]);
+
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    return localStorage.getItem('keim_sidebar_open') === 'true';
+  });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    if (selectedNoteId !== null) {
+      localStorage.setItem('keim_selected_note_id', selectedNoteId.toString());
+      // Recompute and store the path when ID changes
+      db.items.toArray().then(items => {
+        const item = items.find(i => i.id === selectedNoteId);
+        if (item) {
+          const path = getFullPath(selectedNoteId, items);
+          const fullPath = path ? `${path}/${item.title}` : item.title;
+          localStorage.setItem('keim_selected_note_path', fullPath);
+          setSelectedNotePath(fullPath);
+        }
+      });
+    } else {
+      localStorage.removeItem('keim_selected_note_id');
+      localStorage.removeItem('keim_selected_note_path');
+      setSelectedNotePath(null);
+    }
+  }, [selectedNoteId]);
+
+  useEffect(() => {
+    localStorage.setItem('keim_sidebar_open', isSidebarOpen.toString());
+  }, [isSidebarOpen]);
+
+  // --- PWA Installation ---
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstallPWA = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    console.log(`PWA install outcome: ${outcome}`);
+    setInstallPrompt(null);
+  };
   const [appState, setAppState] = useState<AppState>('loading');
   const [isPickingVault, setIsPickingVault] = useState(false);
   const [vaultName, setVaultName] = useState<string>('');
   // Sidebar key forces re-render when vault loads new notes
   const [sidebarKey, setSidebarKey] = useState(0);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('disconnected');
-  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
+  const [lastSyncTime, setLastSyncTime] = useState<number | null>(() => {
+    return Number(localStorage.getItem('keim_last_sync')) || null;
+  });
   const storageMode = getStorageMode(); // sync call — safe since we re-render on appState changes
 
   // --- Theme ---
@@ -65,14 +124,29 @@ function App() {
     const tree = await readVaultTree();
     if (!tree) return;
 
-    await db.items.clear();
-    await db.contents.clear();
+    // Build absolute paths index for existing Dexie items
+    const existingItems = await db.items.toArray();
+    const existingMap = new Map<string, any>(); // Map vault path to existing db item
+
+    // Helper to resolve an item's full vault path from Dexie parentIds
+    const buildPath = (item: any): string => {
+      const parentPath = getFullPath(item.parentId, existingItems);
+      return parentPath ? `${parentPath}/${item.title}` : item.title;
+    };
+
+    existingItems.forEach(item => {
+      if (!item.isDeleted) {
+        existingMap.set(buildPath(item), item);
+      }
+    });
+
+    const currentVaultPaths = new Set<string>();
 
     // Index folder paths -> DB ids
     const folderPathToId = new Map<string, number>();
     folderPathToId.set('', 0); // root
 
-    // Insert folders first (sorted by depth so parents come before children)
+    // Insert or update folders first (sorted by depth so parents come before children)
     const sortedFolders = [...tree.folders].sort((a, b) => {
       const depthA = a.path.split('/').length;
       const depthB = b.path.split('/').length;
@@ -80,34 +154,110 @@ function App() {
     });
 
     for (const folder of sortedFolders) {
+      currentVaultPaths.add(folder.path);
       const parentId = folderPathToId.get(folder.parentPath) ?? 0;
-      const id = await db.items.add({
-        parentId, type: 'folder', title: folder.name,
-        updated_at: Date.now()
-      });
-      folderPathToId.set(folder.path, id as number);
-    }
+      const existingFolder = existingMap.get(folder.path);
 
-    // Insert notes
-    for (const note of tree.notes) {
-      const parentId = folderPathToId.get(note.parentPath) ?? 0;
-      const id = await db.items.add({
-        parentId, type: 'note', title: note.title,
-        updated_at: note.updatedAt
-      });
-      // Read content lazily — store to IndexedDB for editor access
-      try {
-        const content = await readNoteContent(note.path);
-        await db.contents.add({ id: id as number, content });
-      } catch {
-        await db.contents.add({ id: id as number, content: '' });
+      if (existingFolder && existingFolder.type === 'folder') {
+        folderPathToId.set(folder.path, existingFolder.id);
+        // Ensure parentId is correct if it was somehow moved
+        if (existingFolder.parentId !== parentId) {
+          await db.items.update(existingFolder.id, { parentId });
+        }
+      } else {
+        const id = await db.items.add({
+          parentId, type: 'folder', title: folder.name,
+          updated_at: Date.now()
+        });
+        folderPathToId.set(folder.path, id as number);
       }
     }
+
+    // Insert or update notes
+    for (const note of tree.notes) {
+      currentVaultPaths.add(note.path);
+      const parentId = folderPathToId.get(note.parentPath) ?? 0;
+      const existingNote = existingMap.get(note.path);
+      let noteId: number;
+
+      if (existingNote && existingNote.type === 'note') {
+        noteId = existingNote.id;
+        // Content-based change detection: only bump updated_at when content ACTUALLY differs.
+        // Never use OS file.lastModified as the sync clock — it causes phantom re-uploads.
+        try {
+          const vaultContent = await readNoteContent(note.path);
+          const dexieContent = await db.contents.get(noteId);
+          const hasContentChanged = dexieContent?.content !== vaultContent;
+          if (hasContentChanged) {
+            await db.contents.put({ id: noteId, content: vaultContent });
+            // Use the file's real lastModified time so sync can correctly
+            // compare it against the cloud version's timestamp.
+            await db.items.update(noteId, { updated_at: note.updatedAt, parentId });
+          } else if (existingNote.parentId !== parentId) {
+            // Only update structural location, do NOT touch updated_at
+            await db.items.update(noteId, { parentId });
+          }
+        } catch (e) { console.warn('Failed to read vault content for comparison:', note.path, e); }
+      } else {
+        // Net-new note found in Vault — use the file's real lastModified
+        // timestamp so that Dropbox sync will correctly identify whether
+        // the cloud copy is newer and should overwrite this one.
+        noteId = (await db.items.add({
+          parentId, type: 'note', title: note.title,
+          updated_at: note.updatedAt
+        })) as number;
+
+        try {
+          const content = await readNoteContent(note.path);
+          await db.contents.add({ id: noteId, content });
+        } catch {
+          await db.contents.add({ id: noteId, content: '' });
+        }
+      }
+    }
+
+    // Handle Deletions: if an item exists in Dexie (non-deleted) but NOT in the Vault,
+    // it was deleted from disk. Mark it deleted so the tombstone syncs to Dropbox.
+    for (const [path, existingItem] of existingMap.entries()) {
+      if (!currentVaultPaths.has(path) && !existingItem.isDeleted) {
+        await db.items.update(existingItem.id, { isDeleted: true, updated_at: Date.now() });
+      }
+    }
+
+    // Attempt to restore selected note ID from path
+    const storedPath = selectedNotePathRef.current;
+    if (storedPath) {
+      const items = await db.items.toArray();
+      const matchedNode = items.find(item => {
+        if (item.type !== 'note') return false;
+        const parentPathStr = getFullPath(item.id!, items);
+        const fullPathStr = parentPathStr ? `${parentPathStr}/${item.title}` : item.title;
+        return fullPathStr === storedPath;
+      });
+      if (matchedNode) {
+        setSelectedNoteId(matchedNode.id!);
+      } else {
+        setSelectedNoteId(null);
+      }
+    }
+
+    // Empty dep array: this function never changes. It reads selectedNotePath via the ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // --- App Startup Logic ---
   useEffect(() => {
     async function init() {
+      // 1. Request Persistent Storage (if supported)
+      if (navigator.storage && navigator.storage.persist) {
+        try {
+          const isPersisted = await navigator.storage.persist();
+          console.log(`Persistent storage granted: ${isPersisted}`);
+        } catch (e) {
+          console.warn('Could not request persistent storage', e);
+        }
+      }
+
       const mode = getStorageMode();
 
       if (mode === 'unset') {
@@ -134,14 +284,50 @@ function App() {
       setAppState('ready');
       await seedIndexedDb();
     }
-    init().catch(console.error);
+    init().then(() => {
+      // Build search index after db is ready
+      buildSearchIndex().catch(console.error);
+    }).catch(console.error);
   }, [loadVaultIntoDb]);
 
-  // Handle Dropbox redirect back + initialize sync status
+  // Listen for background auto-sync status updates, authorize Dropbox, and kick off one initial sync.
   useEffect(() => {
-    authorizeDropbox().then((connected) => {
+    initSync(); // Sets up interval polling and visibility-change listener
+
+    const handleSyncStatus = (e: Event) => {
+      const status = (e as CustomEvent).detail as SyncStatus;
+      setSyncStatus(status);
+      if (status === 'synced') {
+        const time = localStorage.getItem('keim_last_sync');
+        if (time) setLastSyncTime(Number(time));
+      }
+    };
+
+    const handleSyncComplete = () => {
+      buildSearchIndex().catch(console.error);
+    };
+
+    window.addEventListener('keim_sync_status', handleSyncStatus);
+    window.addEventListener('keim_sync_complete', handleSyncComplete);
+
+    // Authorize Dropbox silently (no redirect), then fire ONE background sync if connected.
+    authorizeDropbox().then(async (connected) => {
       setSyncStatus(connected ? 'idle' : 'disconnected');
+      if (connected) {
+        // Small delay so the UI is fully mounted before we start syncing
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+          await syncNotesWithDrive(true /* background */);
+        } catch (e) {
+          console.warn('Initial background sync failed', e);
+        }
+      }
     }).catch(console.error);
+
+    return () => {
+      window.removeEventListener('keim_sync_status', handleSyncStatus);
+      window.removeEventListener('keim_sync_complete', handleSyncComplete);
+    };
   }, []);
 
   // Expose a doSync helper that updates status
@@ -150,30 +336,30 @@ function App() {
       setSyncStatus('disconnected');
       return;
     }
-    setSyncStatus('syncing');
+    // syncStatus is now managed by the keim_sync_status event fired by syncNotesWithDrive
     try {
-      await syncNotesWithDrive(false, (p) => setSyncProgress(p));
-      setSyncStatus('synced');
-      // After a short while, revert to idle and hide progress
-      setTimeout(() => {
-        setSyncStatus('idle');
-        setSyncProgress(null);
-      }, 2000);
-    } catch {
-      setSyncStatus('error');
-      setSyncProgress(null);
+      await syncNotesWithDrive(false);
+    } catch (error: any) {
+      console.error(error);
+      if (error && error.message && error.message.includes("authentication expired")) {
+        alert("Your Dropbox session has expired or is invalid. Please go to Settings and sign in again.");
+      }
     }
   }, []);
 
   // --- Seed IndexedDB (for browser storage mode) ---
   async function seedIndexedDb() {
     const count = await db.items.count();
+    // Only seed if the database is completely empty — never wipe existing notes
+    if (count > 0) {
+      localStorage.setItem('notes_seeded_v2', 'true');
+      localStorage.setItem('keim_has_user_edits', 'true'); // Real notes exist — never treat as untouched defaults
+      return;
+    }
     const hasSeeded = localStorage.getItem('notes_seeded_v2');
-    if (hasSeeded && count > 0) return;
+    if (hasSeeded) return; // Already seeded, DB must have been manually cleared
 
     localStorage.setItem('notes_seeded_v2', 'true');
-    await db.items.clear();
-    await db.contents.clear();
 
     const folderId = await addItem({ parentId: 0, type: 'folder', title: '🚀 Getting Started' });
     await addItem({ parentId: folderId, type: 'note', title: 'Welcome to Keim Notes' },
@@ -181,6 +367,9 @@ function App() {
     await addItem({ parentId: folderId, type: 'note', title: 'Cloud Sync Guide' },
       '# Cloud Sync\n\n1. Open Settings.\n2. Click "Sign in with Dropbox".\n3. That\'s it!');
     await addItem({ parentId: 0, type: 'note', title: 'Quick Scratchpad' }, 'Use this for quick thoughts.');
+
+    // Flag these as untouched default notes
+    localStorage.setItem('keim_has_user_edits', 'false');
   }
 
   // --- Welcome Screen Handlers ---
@@ -198,43 +387,27 @@ function App() {
               "You have existing browser notes. Do you want to copy them into your new Vault folder?\n\nClick OK to Merge, or Cancel to start fresh."
             );
             if (wantsMerge) {
-              // Quick export directly to the newly picked handle
+              const { getFullPath } = await import('./lib/db');
+              const { notePathFromTitle } = await import('./lib/vault');
               const contents = await db.contents.toArray();
               const items = await db.items.toArray();
               const contentMap = new Map(contents.map(c => [c.id, c.content]));
 
-              // Recursive path builder
-              const getFullPath = (itemId: number, allItems: any[]): string => {
-                const item = allItems.find(i => i.id === itemId);
-                if (!item || item.parentId === 0) return "";
-                const parentPath = getFullPath(item.parentId, allItems);
-                const parent = allItems.find(i => i.id === item.parentId);
-                if (!parent) return "";
-                return parentPath ? `${parentPath}/${parent.title}` : parent.title;
-              };
-
-              // Note file writer
-              const writeNote = async (notePath: string, content: string) => {
-                const parts = notePath.split('/');
-                let dir = handle;
-                for (let i = 0; i < parts.length - 1; i++) {
-                  dir = await dir.getDirectoryHandle(parts[i], { create: true });
-                }
-                const fileHandle = await dir.getFileHandle(parts[parts.length - 1], { create: true });
-                const writable = await (fileHandle as any).createWritable();
-                await writable.write(content);
-                await writable.close();
-              };
-
-              // Execute move
               for (const item of items) {
                 if (item.type === 'note' && !item.isDeleted) {
                   const content = contentMap.get(item.id!) || '';
                   const parentPath = getFullPath(item.id!, items);
-                  // notePathFromTitle equivalent
-                  const safeName = item.title.replace(/[<>:"/\\|?*]/g, '_') + '.md';
-                  const path = parentPath ? `${parentPath}/${safeName}` : safeName;
-                  await writeNote(path, content);
+                  const path = notePathFromTitle(item.title, parentPath);
+                  // Write directly to the picked handle
+                  const parts = path.split('/');
+                  let dir: FileSystemDirectoryHandle = handle;
+                  for (let i = 0; i < parts.length - 1; i++) {
+                    dir = await dir.getDirectoryHandle(parts[i], { create: true });
+                  }
+                  const fileHandle = await dir.getFileHandle(parts[parts.length - 1], { create: true });
+                  const writable = await (fileHandle as any).createWritable();
+                  await writable.write(content);
+                  await writable.close();
                 }
               }
             }
@@ -306,6 +479,7 @@ function App() {
         vaultName={vaultName}
         storageMode={storageMode}
         syncStatus={syncStatus}
+        lastSyncTime={lastSyncTime}
         onSync={doSync}
       />
 
@@ -316,12 +490,19 @@ function App() {
         setTheme={setTheme}
         onChangeVault={handlePickVault}
         onSwitchToBrowserStorage={handleUseBrowserStorage}
+        onSyncStatusChange={(connected) => setSyncStatus(connected ? 'idle' : 'disconnected')}
+        onInstallPWA={installPrompt ? handleInstallPWA : undefined}
       />
 
-      <SyncProgressModal
-        progress={syncProgress}
-        onClose={() => setSyncProgress(null)}
-      />
+      {/* Render Universal Search Palette */}
+      {appState === 'ready' && (
+        <CommandPalette
+          onSelectNote={(id) => {
+            setSelectedNoteId(id);
+            if (window.innerWidth < 768) setIsSidebarOpen(false);
+          }}
+        />
+      )}
 
       <button
         onClick={() => setIsSidebarOpen(!isSidebarOpen)}

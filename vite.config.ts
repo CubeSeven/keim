@@ -16,9 +16,15 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true,
+        navigateFallbackDenylist: [/^\/keim\/\?code=/, /^blob:/],
+      },
       manifest: {
-        name: 'Local-First Notes',
-        short_name: 'Notes',
+        name: 'Keim',
+        short_name: 'Keim',
         theme_color: '#ffffff',
         icons: [
           {

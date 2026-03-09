@@ -5,8 +5,8 @@
 @theme {
   --color-light-bg: #FEFEFE;
   --color-light-ui: #F3F3F3;
-  --color-dark-bg: #020202;
-  --color-dark-ui: #161616;
+  --color-dark-bg: #101013;
+  --color-dark-ui: #131316;
 }
 
 @layer base {
@@ -38,10 +38,10 @@
 
 .dark {
   --crepe-color-background: transparent;
-  --crepe-color-surface: #1e1e1e;
+  --crepe-color-surface: #131316;
   --crepe-color-on-surface: #e6e6e6;
   --crepe-color-border: rgba(255, 255, 255, 0.08);
-  --crepe-color-tooltip-bg: #2c2c2c;
+  --crepe-color-tooltip-bg: #131316;
   --crepe-color-tooltip-fg: #e6e6e6;
   --crepe-color-inline-code-bg: rgba(200, 200, 200, 0.12);
 }
@@ -76,6 +76,13 @@
   min-height: 200px;
   color: inherit;
   caret-color: currentColor;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.milkdown-wrapper .milkdown .ProseMirror img {
+  max-width: 100%;
+  height: auto;
 }
 
 /* Empty doc placeholder */

@@ -1,16 +1,5 @@
-import { db, type NoteItem } from './db';
+import { db, getFullPath } from './db';
 import { notePathFromTitle } from './vault';
-
-function getFullPath(itemId: number, allItems: NoteItem[]): string {
-    const item = allItems.find(i => i.id === itemId);
-    if (!item || item.parentId === 0) return "";
-
-    const parentPath = getFullPath(item.parentId, allItems);
-    const parent = allItems.find(i => i.id === item.parentId);
-
-    if (!parent) return "";
-    return parentPath ? `${parentPath}/${parent.title}` : parent.title;
-}
 
 /**
  * Write a note to a specific directory handle recursively.
@@ -128,12 +117,22 @@ export async function importMarkdownFiles(files: { file: File, path: string }[])
 
             const parentId = await ensurePathExists(folderPath);
 
-            await addItem({
-                parentId,
-                type: 'note',
-                title: title
-            }, content);
-            importedCount++;
+            // Check if note already exists
+            const existing = await db.items
+                .where('parentId').equals(parentId)
+                .filter(i => i.title === title && !i.isDeleted && i.type === 'note')
+                .first();
+
+            if (!existing) {
+                // Use the file's real lastModified so sync correctly
+                // identifies cloud versions as newer if they are.
+                await addItem({
+                    parentId,
+                    type: 'note',
+                    title: title
+                }, content, file.lastModified);
+                importedCount++;
+            }
         }
     }
 

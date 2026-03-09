@@ -36,7 +36,7 @@ function openHandleStore(): Promise<IDBDatabase> {
     });
 }
 
-export async function saveVaultHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+async function saveVaultHandle(handle: FileSystemDirectoryHandle): Promise<void> {
     const db = await openHandleStore();
     return new Promise((resolve, reject) => {
         const tx = db.transaction('handles', 'readwrite');
@@ -46,7 +46,7 @@ export async function saveVaultHandle(handle: FileSystemDirectoryHandle): Promis
     });
 }
 
-export async function loadVaultHandle(): Promise<FileSystemDirectoryHandle | null> {
+async function loadVaultHandle(): Promise<FileSystemDirectoryHandle | null> {
     try {
         const db = await openHandleStore();
         return new Promise((resolve, reject) => {
@@ -60,22 +60,9 @@ export async function loadVaultHandle(): Promise<FileSystemDirectoryHandle | nul
     }
 }
 
-export async function clearVaultHandle(): Promise<void> {
-    const db = await openHandleStore();
-    return new Promise((resolve) => {
-        const tx = db.transaction('handles', 'readwrite');
-        tx.objectStore('handles').delete(VAULT_IDB_KEY);
-        tx.oncomplete = () => resolve();
-    });
-}
-
 // --- Vault Picker ---
 
 let _vaultHandle: FileSystemDirectoryHandle | null = null;
-
-export function getVaultHandle(): FileSystemDirectoryHandle | null {
-    return _vaultHandle;
-}
 
 export async function openVaultPicker(): Promise<FileSystemDirectoryHandle | null> {
     if (!isFileSystemSupported()) return null;
@@ -187,23 +174,18 @@ export async function writeNoteToVault(notePath: string, content: string): Promi
     await writable.close();
 }
 
-export async function deleteNoteFromVault(notePath: string): Promise<void> {
+/**
+ * Delete any file or folder from the vault by its relative path.
+ * For folders, deletion is recursive (removes all children).
+ */
+export async function deleteFromVault(relativePath: string): Promise<void> {
     if (!_vaultHandle) throw new Error('No vault open');
-    const parts = notePath.split('/');
+    const parts = relativePath.split('/');
     let dir: FileSystemDirectoryHandle = _vaultHandle;
     for (let i = 0; i < parts.length - 1; i++) {
         dir = await dir.getDirectoryHandle(parts[i], { create: false });
     }
-    await dir.removeEntry(parts[parts.length - 1]);
-}
-
-export async function createFolderInVault(folderPath: string): Promise<void> {
-    if (!_vaultHandle) throw new Error('No vault open');
-    const parts = folderPath.split('/');
-    let dir: FileSystemDirectoryHandle = _vaultHandle;
-    for (const part of parts) {
-        dir = await dir.getDirectoryHandle(part, { create: true });
-    }
+    await dir.removeEntry(parts[parts.length - 1], { recursive: true });
 }
 
 /** Convert a note title + parent path to a file path */

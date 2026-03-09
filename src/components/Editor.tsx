@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../lib/db';
+import { db, getFullPath } from '../lib/db';
 import { triggerAutoSync } from '../lib/sync';
 import { getStorageMode, writeNoteToVault, notePathFromTitle } from '../lib/vault';
+import { updateSearchIndex } from '../lib/search';
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react';
 import { Crepe } from '@milkdown/crepe';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
@@ -28,9 +29,18 @@ function CrepeBody({ content, noteId, onSave }: CrepeBodyProps) {
                 defaultValue: content,
             });
 
+            // Milkdown fires markdownUpdated once on initial mount with the default value,
+            // even before the user types. Skipping that first event prevents a phantom
+            // save → triggerAutoSync → unnecessary sync cascade on every editor mount.
+            let isFirstUpdate = true;
+
             crepe.editor
                 .config((ctx) => {
                     ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
+                        if (isFirstUpdate) {
+                            isFirstUpdate = false;
+                            return;
+                        }
                         onSave(markdown);
                     });
                 })
@@ -49,13 +59,29 @@ export default function Editor({ noteId }: EditorProps) {
     const noteContent = useLiveQuery(() => db.contents.get(noteId), [noteId]);
     const [title, setTitle] = useState('');
     const saveTimeoutRef = useRef<number | null>(null);
+    const [syncRevision, setSyncRevision] = useState(0);
+
+    // Re-mount editor when sync downloads new content for THIS specific note
+    useEffect(() => {
+        const handleSyncComplete = ((e: CustomEvent) => {
+            const downloadedIds = e.detail?.downloadedIds as number[] | undefined;
+            if (!downloadedIds || downloadedIds.includes(noteId)) {
+                setSyncRevision(r => r + 1);
+            }
+        }) as EventListener;
+        window.addEventListener('keim_sync_complete', handleSyncComplete);
+        return () => window.removeEventListener('keim_sync_complete', handleSyncComplete);
+    }, [noteId]);
 
     useEffect(() => {
-        if (note) {
-            setTitle(note.title);
-        } else {
-            setTitle('');
-        }
+        const timer = setTimeout(() => {
+            if (note) {
+                setTitle(note.title);
+            } else {
+                setTitle('');
+            }
+        }, 0);
+        return () => clearTimeout(timer);
     }, [note]);
 
     const debouncedSaveContent = useCallback(
@@ -64,9 +90,15 @@ export default function Editor({ noteId }: EditorProps) {
             saveTimeoutRef.current = window.setTimeout(async () => {
                 await db.contents.put({ id: noteId, content: markdown });
                 await db.items.update(noteId, { updated_at: Date.now() });
+                if (note) {
+                    updateSearchIndex(noteId, note.title, markdown, note.parentId);
+                }
+                localStorage.setItem('keim_has_user_edits', 'true'); // Document touched Let Cloud know
                 // Write to vault if active
                 if (note && getStorageMode() === 'vault') {
-                    const path = notePathFromTitle(note.title, note.parentPath ?? '');
+                    const allItems = await db.items.toArray();
+                    const parentPath = getFullPath(noteId, allItems);
+                    const path = notePathFromTitle(note.title, parentPath);
                     writeNoteToVault(path, markdown).catch(console.warn);
                 }
                 triggerAutoSync();
@@ -75,11 +107,22 @@ export default function Editor({ noteId }: EditorProps) {
         [noteId, note]
     );
 
+    // Title editing debouncer
+    const titleTimeoutRef = useRef<number | null>(null);
+
     const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newTitle = e.target.value;
         setTitle(newTitle);
-        db.items.update(noteId, { title: newTitle, updated_at: Date.now() });
-        triggerAutoSync();
+
+        if (titleTimeoutRef.current) window.clearTimeout(titleTimeoutRef.current);
+        titleTimeoutRef.current = window.setTimeout(async () => {
+            await db.items.update(noteId, { title: newTitle, updated_at: Date.now() });
+            if (note && noteContent) {
+                updateSearchIndex(noteId, newTitle, noteContent.content, note.parentId);
+            }
+            localStorage.setItem('keim_has_user_edits', 'true');
+            triggerAutoSync();
+        }, 500);
     };
 
     if (!note || noteContent === undefined) return null;
@@ -103,10 +146,9 @@ export default function Editor({ noteId }: EditorProps) {
                 />
 
                 {/* ── Editor body — same column, no extra wrappers ── */}
-                <div className="milkdown-wrapper">
+                <div className="milkdown-wrapper" key={`${noteId}-${syncRevision}`}>
                     <MilkdownProvider>
                         <CrepeBody
-                            key={noteId}
                             noteId={noteId}
                             content={noteContent?.content ?? ''}
                             onSave={debouncedSaveContent}
