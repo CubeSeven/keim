@@ -95,8 +95,9 @@
 }
 
 .dark .milkdown-wrapper .milkdown .ProseMirror p.is-empty::before,
-.dark .milkdown-wrapper .milkdown .ProseMirror .is-empty::before {
-  color: rgba(255, 255, 255, 0.3);
+.dark .milkdown-wrapper .milkdown .ProseMirror .is-empty::before,
+.dark .crepe-placeholder::before {
+  color: rgba(255, 255, 255, 0.35) !important;
 }
 
 /* --- Typography — Notion-like --- */
