@@ -18,6 +18,7 @@ async function writeNoteToExtHandle(
     }
     // Write the actual file
     const fileHandle = await dir.getFileHandle(parts[parts.length - 1], { create: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const writable = await (fileHandle as any).createWritable();
     await writable.write(content);
     await writable.close();
@@ -33,7 +34,7 @@ export async function exportToFolder() {
         throw new Error("Your browser does not support folder export.");
     }
 
-    const exportHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+    const exportHandle = await (window as unknown as { showDirectoryPicker: (options?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({ mode: 'readwrite' });
     if (!exportHandle) return 0;
 
     // 2. Fetch all current data

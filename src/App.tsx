@@ -60,12 +60,12 @@ function App() {
   }, [isSidebarOpen]);
 
   // --- PWA Installation ---
-  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [installPrompt, setInstallPrompt] = useState<{ prompt: () => void, userChoice: Promise<{ outcome: string }> } | null>(null);
 
   useEffect(() => {
     const handler = (e: Event) => {
       e.preventDefault();
-      setInstallPrompt(e);
+      setInstallPrompt(e as unknown as { prompt: () => void, userChoice: Promise<{ outcome: string }> });
     };
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
@@ -126,9 +126,11 @@ function App() {
 
     // Build absolute paths index for existing Dexie items
     const existingItems = await db.items.toArray();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const existingMap = new Map<string, any>(); // Map vault path to existing db item
 
     // Helper to resolve an item's full vault path from Dexie parentIds
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const buildPath = (item: any): string => {
       const parentPath = getFullPath(item.parentId, existingItems);
       return parentPath ? `${parentPath}/${item.title}` : item.title;
@@ -242,7 +244,6 @@ function App() {
     }
 
     // Empty dep array: this function never changes. It reads selectedNotePath via the ref.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // --- App Startup Logic ---
@@ -339,7 +340,8 @@ function App() {
     // syncStatus is now managed by the keim_sync_status event fired by syncNotesWithDrive
     try {
       await syncNotesWithDrive(false);
-    } catch (error: any) {
+    } catch (e) {
+      const error = e as Error;
       console.error(error);
       if (error && error.message && error.message.includes("authentication expired")) {
         alert("Your Dropbox session has expired or is invalid. Please go to Settings and sign in again.");
@@ -405,6 +407,7 @@ function App() {
                     dir = await dir.getDirectoryHandle(parts[i], { create: true });
                   }
                   const fileHandle = await dir.getFileHandle(parts[parts.length - 1], { create: true });
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const writable = await (fileHandle as any).createWritable();
                   await writable.write(content);
                   await writable.close();
@@ -506,7 +509,7 @@ function App() {
 
       <button
         onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-        className="fixed top-3 left-3 z-[60] p-2 hover:bg-light-ui dark:hover:bg-dark-ui rounded-lg text-dark-bg dark:text-light-bg transition-colors"
+        className="fixed top-3 left-3 z-[60] p-2 bg-light-bg/80 dark:bg-dark-bg/80 backdrop-blur-md border border-dark-bg/5 dark:border-light-bg/5 shadow-sm hover:bg-light-ui dark:hover:bg-dark-ui rounded-lg text-dark-bg dark:text-light-bg transition-all"
         aria-label="Toggle Sidebar"
       >
         <Menu size={20} />

@@ -26,9 +26,11 @@ export default function Sidebar({ selectedNoteId, onSelectNote, isOpen, onClose,
 
     const tree = useMemo(() => {
         if (!items) return [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const itemMap = new Map<number, any>();
         items.forEach(item => itemMap.set(item.id!, { ...item, children: [] }));
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const roots: any[] = [];
         itemMap.forEach(item => {
             if (item.parentId === 0) {
@@ -43,6 +45,7 @@ export default function Sidebar({ selectedNoteId, onSelectNote, isOpen, onClose,
             }
         });
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sortTree = (nodes: any[]) => {
             nodes.sort((a, b) => {
                 const orderA = a.order ?? a.updated_at ?? 0;
@@ -203,6 +206,7 @@ function TreeNode({ item, selectedId, onSelect, level }: TreeNodeProps) {
     // Auto-expand if the selected note is a child of this folder
     useEffect(() => {
         if (item.type === 'folder' && selectedId) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const hasSelectedDescendant = (node: any): boolean => {
                 if (node.id === selectedId) return true;
                 return node.children?.some(hasSelectedDescendant) || false;
@@ -547,6 +551,7 @@ function TreeNode({ item, selectedId, onSelect, level }: TreeNodeProps) {
 
             {item.type === 'folder' && isOpen && (
                 <div>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                     {item.children.map((child: any) => (
                         <TreeNode
                             key={child.id}

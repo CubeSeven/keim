@@ -259,6 +259,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                     input.multiple = true;
                                                     input.accept = '.md';
                                                     input.webkitdirectory = true;
+                                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                                     (input as any).directory = true;
 
                                                     input.onchange = async (e: Event) => {
@@ -269,6 +270,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                         try {
                                                             const fileData = fileList.map(f => ({
                                                                 file: f,
+                                                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                                                 path: (f as any).webkitRelativePath || f.name
                                                             }));
                                                             const count = await importMarkdownFiles(fileData);

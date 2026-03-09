@@ -161,8 +161,9 @@ export async function syncNotesWithDrive(background = false) {
         try {
             await dbx.usersGetCurrentAccount();
             lastAuthCheck = Date.now();
-        } catch (e: any) {
-            const status = e?.status || e?.response?.status;
+        } catch (e) {
+            const error = e as { status?: number; response?: { status?: number } };
+            const status = error?.status || error?.response?.status;
             if (status === 400 || status === 401) {
                 disconnectDropbox();
                 broadcastSyncStatus('disconnected');
@@ -425,10 +426,11 @@ async function ensureAppFolder() {
     if (!dbx || folderChecked) return;
     try {
         await dbx.filesCreateFolderV2({ path: APP_ROOT, autorename: false });
-    } catch (e: any) {
+    } catch (e) {
         // 409 = folder already exists — that's expected and fine
-        const status = e?.status || e?.response?.status;
-        const errSummary = e?.error?.error_summary || '';
+        const error = e as { status?: number; response?: { status?: number }; error?: { error_summary?: string } };
+        const status = error?.status || error?.response?.status;
+        const errSummary = error?.error?.error_summary || '';
         if (status === 409 || errSummary.includes('path/conflict')) {
             // Expected — folder exists
         } else {
@@ -443,8 +445,10 @@ async function downloadAppFile(relativePath: string, retryCount = 0): Promise<Bl
     const fullPath = `${APP_ROOT}${relativePath}`;
     try {
         const response = await dbx.filesDownload({ path: fullPath });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return (response.result as any).fileBlob;
-    } catch (error: any) {
+    } catch (e) {
+        const error = e as { status?: number; response?: { status?: number; headers?: { get: (h: string) => string | null } }; error?: { error_summary?: string } };
         // Network errors (offline, DNS failure, etc.)
         if (error instanceof TypeError && retryCount < 2) {
             await new Promise(r => setTimeout(r, 3000));
@@ -473,7 +477,8 @@ async function uploadAppFile(relativePath: string, content: string, retryCount =
             contents: content,
             mode: { '.tag': 'overwrite' }
         });
-    } catch (error: any) {
+    } catch (e) {
+        const error = e as { status?: number; response?: { status?: number; headers?: { get: (h: string) => string | null } } };
         // Network errors (offline, DNS failure, etc.)
         if (error instanceof TypeError && retryCount < 2) {
             await new Promise(r => setTimeout(r, 3000));

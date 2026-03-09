@@ -8,7 +8,7 @@ export interface SearchResult {
     excerpt?: string;
     path?: string;
     score: number;
-    match: any;
+    match: unknown;
 }
 
 // Global instance of MiniSearch

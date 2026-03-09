@@ -67,13 +67,13 @@ let _vaultHandle: FileSystemDirectoryHandle | null = null;
 export async function openVaultPicker(): Promise<FileSystemDirectoryHandle | null> {
     if (!isFileSystemSupported()) return null;
     try {
-        const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+        const handle = await (window as unknown as { showDirectoryPicker: (options?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({ mode: 'readwrite' });
         _vaultHandle = handle;
         await saveVaultHandle(handle);
         setStorageMode('vault');
         return handle;
-    } catch (e: any) {
-        if (e.name === 'AbortError') return null; // User cancelled
+    } catch (e) {
+        if ((e as Error).name === 'AbortError') return null; // User cancelled
         throw e;
     }
 }
@@ -83,7 +83,7 @@ export async function restoreVaultHandle(): Promise<FileSystemDirectoryHandle | 
     if (!handle) return null;
     try {
         // Re-request permission if needed
-        const permission = await (handle as any).requestPermission({ mode: 'readwrite' });
+        const permission = await (handle as unknown as { requestPermission: (options?: { mode?: 'read' | 'readwrite' }) => Promise<PermissionState> }).requestPermission({ mode: 'readwrite' });
         if (permission === 'granted') {
             _vaultHandle = handle;
             return handle;
@@ -119,6 +119,7 @@ async function readDirRecursive(
     basePath: string,
     tree: VaultTree
 ): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for await (const [name, entry] of (dirHandle as any).entries()) {
         // Skip hidden files/folders (like .git, .DS_Store)
         if (name.startsWith('.')) continue;
@@ -169,6 +170,7 @@ export async function writeNoteToVault(notePath: string, content: string): Promi
         dir = await dir.getDirectoryHandle(parts[i], { create: true });
     }
     const fileHandle = await dir.getFileHandle(parts[parts.length - 1], { create: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const writable = await (fileHandle as any).createWritable();
     await writable.write(content);
     await writable.close();
