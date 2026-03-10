@@ -282,11 +282,41 @@ export async function syncNotesWithDrive(background = false) {
 
                     console.log(`Re-assigned local #${oldId} to #${newId}`);
                 }
-                // Refresh local items one last time
+                // Refresh local items
                 localItems = await db.items.toArray();
-                localMap.clear();
-                localItems.forEach(item => { if (item.id !== undefined) localMap.set(item.id, item); });
             }
+
+            // --- ORPHAN FILE HANDLING (First Sync Only) ---
+            // If there are local files that don't exist in the cloud at all,
+            // they might be "ghosts" from an old vault. Ask user to decide.
+            const localOnlyItems = localItems.filter(li => {
+                if (li.id === undefined || li.isDeleted || dedupedIds.has(li.id)) return false;
+                const parentPath = getFullPath(li.id, localItems);
+                const fullPath = parentPath ? `${parentPath}/${li.title}` : li.title;
+                return !remotePathMap.has(fullPath);
+            });
+
+            if (localOnlyItems.length > 0) {
+                const keepOrphans = window.confirm(
+                    `New Files Detected: ${localOnlyItems.length} of your local files do not exist in Dropbox.\n\n` +
+                    `Do you want to UPLOAD these to Dropbox as new notes?\n\n` +
+                    `Click OK to upload them, or Cancel to DISCARD them (recommended if you are restoring an old vault).`
+                );
+
+                if (!keepOrphans) {
+                    for (const item of localOnlyItems) {
+                        console.log(`Sync: Discarding orphan local file "${item.title}"`);
+                        await db.items.delete(item.id!);
+                        await db.contents.delete(item.id!);
+                        dedupedIds.add(item.id!);
+                    }
+                    // Final refresh
+                    localItems = await db.items.toArray();
+                }
+            }
+
+            localMap.clear();
+            localItems.forEach(item => { if (item.id !== undefined) localMap.set(item.id, item); });
         }
 
         const toDownload: number[] = [];
