@@ -1,4 +1,5 @@
-import { defineConfig } from 'vite'
+/// <reference types="vitest" />
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -21,11 +22,16 @@ export default defineConfig({
         clientsClaim: true,
         skipWaiting: true,
         navigateFallbackDenylist: [/^\/keim\/\?code=/, /^blob:/],
+        maximumFileSizeToCacheInBytes: 5242880,
       },
       manifest: {
         name: 'Keim',
         short_name: 'Keim',
-        theme_color: '#ffffff',
+        description: 'Local-first, minimalist notes',
+        theme_color: '#FEFEFE',
+        background_color: '#FEFEFE',
+        display: 'standalone',
+        orientation: 'portrait-primary',
         icons: [
           {
             src: 'pwa-192x192.png',
@@ -41,4 +47,9 @@ export default defineConfig({
       }
     })
   ],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
+  },
 })

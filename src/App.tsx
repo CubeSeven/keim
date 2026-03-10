@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Editor from './components/Editor';
 import { db, addItem, getFullPath } from './lib/db';
-import { Menu } from 'lucide-react';
+import { PanelLeft } from 'lucide-react';
 import SettingsModal from './components/SettingsModal';
 import WelcomeScreen from './components/WelcomeScreen';
 import { authorizeDropbox, syncNotesWithDrive, isDriveConnected, initSync } from './lib/sync';
@@ -13,6 +13,7 @@ import {
 } from './lib/vault';
 import { CommandPalette } from './components/CommandPalette';
 import { buildSearchIndex } from './lib/search';
+import MobileDock from './components/MobileDock';
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'disconnected';
 
@@ -104,11 +105,17 @@ function App() {
   const applyTheme = (currentTheme: 'light' | 'dark' | 'system') => {
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark');
-    if (currentTheme === 'system') {
-      root.classList.add(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    } else {
-      root.classList.add(currentTheme);
-    }
+    const isDark = currentTheme === 'system'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : currentTheme === 'dark';
+
+    root.classList.add(isDark ? 'dark' : 'light');
+
+    // Update theme-color meta tag for Android navigation bar / status bar
+    const color = isDark ? '#1C1B21' : '#FEFEFE';
+    document.querySelectorAll('meta[name="theme-color"]').forEach(meta => {
+      meta.setAttribute('content', color);
+    });
   };
 
   useEffect(() => {
@@ -374,6 +381,31 @@ function App() {
     localStorage.setItem('keim_has_user_edits', 'false');
   }
 
+  // --- Global Creation Handlers ---
+  const handleAddNote = async (parentId = 0) => {
+    const id = await addItem({ parentId, type: 'note', title: 'New Note' }, '');
+    localStorage.setItem('keim_has_user_edits', 'true');
+    setSelectedNoteId(id as number);
+    if (window.innerWidth < 768) setIsSidebarOpen(false);
+
+    const tryFocus = () => window.dispatchEvent(new CustomEvent('keim_focus_title', { detail: id }));
+    setTimeout(tryFocus, 50);
+    setTimeout(tryFocus, 150);
+    setTimeout(tryFocus, 300);
+  };
+
+  const handleAddFolder = async (parentId = 0) => {
+    const id = await addItem({ parentId, type: 'folder', title: 'New Folder' }, '');
+    localStorage.setItem('keim_has_user_edits', 'true');
+    if (window.innerWidth < 768) setIsSidebarOpen(true);
+
+    // Rename node
+    const tryRename = () => window.dispatchEvent(new CustomEvent('keim_rename_node', { detail: id }));
+    setTimeout(tryRename, 50);
+    setTimeout(tryRename, 150);
+    setTimeout(tryRename, 300);
+  };
+
   // --- Welcome Screen Handlers ---
   const handlePickVault = async () => {
     setIsPickingVault(true);
@@ -484,6 +516,8 @@ function App() {
         syncStatus={syncStatus}
         lastSyncTime={lastSyncTime}
         onSync={doSync}
+        onAddNote={handleAddNote}
+        onAddFolder={handleAddFolder}
       />
 
       <SettingsModal
@@ -507,12 +541,24 @@ function App() {
         />
       )}
 
+      {/* Render Mobile Dock */}
+      {appState === 'ready' && !isSidebarOpen && (
+        <MobileDock
+          onAddNote={() => handleAddNote(0)}
+          onAddFolder={() => handleAddFolder(0)}
+        />
+      )}
+
       <button
         onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-        className="fixed top-3 left-3 z-[60] p-2 bg-light-bg/80 dark:bg-dark-bg/80 backdrop-blur-md border border-dark-bg/5 dark:border-light-bg/5 shadow-sm hover:bg-light-ui dark:hover:bg-dark-ui rounded-lg text-dark-bg dark:text-light-bg transition-all"
+        className="fixed z-[60] p-2.5 bg-light-bg/80 dark:bg-dark-bg/80 backdrop-blur-md border border-dark-bg/5 dark:border-light-bg/5 shadow-sm hover:bg-light-ui dark:hover:bg-dark-ui rounded-full text-dark-bg dark:text-light-bg transition-all"
+        style={{
+          top: 'calc(1rem + var(--spacing-safe-top, 0px))',
+          left: 'calc(1rem + var(--spacing-safe-left, 0px))'
+        }}
         aria-label="Toggle Sidebar"
       >
-        <Menu size={20} />
+        <PanelLeft size={22} />
       </button>
 
       <main className={`flex-1 flex flex-col h-full w-full overflow-hidden relative transition-all duration-300 ease-in-out ${isSidebarOpen ? 'md:ml-64' : 'ml-0'}`}>

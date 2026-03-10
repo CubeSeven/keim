@@ -15,10 +15,10 @@ export interface SearchResult {
 // We index BOTH the 'title' and the 'content'.
 // We return the title so we can display it right away in the UI.
 export const miniSearch = new MiniSearch({
-    fields: ['title', 'content'], // fields to index for full-text search
+    fields: ['title', 'content', 'tags'], // fields to index for full-text search
     storeFields: ['title', 'parentId'], // fields to return with search results
     searchOptions: {
-        boost: { title: 2 }, // Title matches are ranked higher than content matches
+        boost: { title: 2, tags: 1.5 }, // Title matches are ranked higher, then tags, then content
         fuzzy: 0.2, // Allow typos (e.g. 1 mistake per 5 chars)
         prefix: true // "rea" matches "react"
     }
@@ -48,6 +48,7 @@ export async function buildSearchIndex() {
         id: note.id,
         title: note.title,
         content: contentMap.get(note.id!) || '',
+        tags: note.tags?.join(' ') || '',
         parentId: note.parentId
     }));
 
@@ -61,11 +62,12 @@ export async function buildSearchIndex() {
  * Update the search index for a single note.
  * Call this when a note is created, renamed, or modified.
  */
-export function updateSearchIndex(noteId: number, title: string, content: string, parentId: number) {
+export function updateSearchIndex(noteId: number, title: string, content: string, parentId: number, tags?: string[]) {
+    const tagsStr = tags?.join(' ') || '';
     if (!miniSearch.has(noteId)) {
-        miniSearch.add({ id: noteId, title, content, parentId });
+        miniSearch.add({ id: noteId, title, content, parentId, tags: tagsStr });
     } else {
-        miniSearch.replace({ id: noteId, title, content, parentId });
+        miniSearch.replace({ id: noteId, title, content, parentId, tags: tagsStr });
     }
 }
 

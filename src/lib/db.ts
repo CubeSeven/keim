@@ -5,6 +5,7 @@ export interface NoteItem {
     parentId: number; // 0 for root level
     type: 'folder' | 'note';
     title: string;
+    icon?: string;
     tags?: string[];
     updated_at: number;
     isDeleted?: boolean; // For sync tombstones

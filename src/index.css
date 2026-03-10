@@ -5,8 +5,13 @@
 @theme {
   --color-light-bg: #FEFEFE;
   --color-light-ui: #F3F3F3;
-  --color-dark-bg: #101013;
-  --color-dark-ui: #131316;
+  --color-dark-bg: #1C1B21;
+  --color-dark-ui: #26272C;
+
+  --spacing-safe-top: env(safe-area-inset-top);
+  --spacing-safe-bottom: env(safe-area-inset-bottom);
+  --spacing-safe-left: env(safe-area-inset-left);
+  --spacing-safe-right: env(safe-area-inset-right);
 }
 
 @layer base {
@@ -51,10 +56,10 @@
 
 .dark {
   --crepe-color-background: transparent;
-  --crepe-color-surface: #131316;
+  --crepe-color-surface: #26272C;
   --crepe-color-on-surface: #e6e6e6;
   --crepe-color-border: rgba(255, 255, 255, 0.08);
-  --crepe-color-tooltip-bg: #131316;
+  --crepe-color-tooltip-bg: #26272C;
   --crepe-color-tooltip-fg: #e6e6e6;
   --crepe-color-inline-code-bg: rgba(200, 200, 200, 0.12);
 }

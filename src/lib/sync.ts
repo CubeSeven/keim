@@ -194,12 +194,13 @@ export async function syncNotesWithDrive(background = false) {
         localItems.forEach(item => { if (item.id !== undefined) localMap.set(item.id, item); });
 
         // -----------------------------------------------------------------
-        // FIRST-SYNC DEDUP: On a fresh device, vault-imported notes have
-        // different auto-incremented IDs than the cloud notes. Correlate
-        // by title + parent-path so the cloud version downloads cleanly
-        // instead of creating duplicates.
+        // FIRST-SYNC DEDUP & RECONCILIATION
+        // On a fresh device, vault-imported notes have different IDs 
+        // than the cloud notes. We must reconcile them by PATH.
         // -----------------------------------------------------------------
         const dedupedIds = new Set<number>();
+        const collisionsToReassign: NoteItem[] = [];
+
         if (!lastSyncTime) {
             // Build a path→remoteId map from manifest metadata
             const remotePathMap = new Map<string, number>();
@@ -211,29 +212,80 @@ export async function syncNotesWithDrive(background = false) {
             }
 
             if (remotePathMap.size > 0) {
-                for (const localItem of localItems) {
-                    if (localItem.id === undefined || localItem.isDeleted) continue;
-                    // Skip items that already share an ID with the cloud
-                    if (remoteManifest.items[localItem.id]) continue;
+                // Check if we should warn the user: are there many local files that match cloud paths
+                // but have suspicious timestamps (e.g., all recently modified)?
+                const pathMatches = localItems.filter(li => {
+                    const parentPath = getFullPath(li.id!, localItems);
+                    const fullPath = parentPath ? `${parentPath}/${li.title}` : li.title;
+                    return remotePathMap.has(fullPath);
+                });
 
-                    const parentPath = getFullPath(localItem.id, localItems);
-                    const fullPath = parentPath ? `${parentPath}/${localItem.title}` : localItem.title;
-                    const matchingRemoteId = remotePathMap.get(fullPath);
+                if (pathMatches.length > 0) {
+                    const confirm = window.confirm(
+                        `Sync Warning: ${pathMatches.length} of your local files match notes already in Dropbox. \n\n` +
+                        `Since this is a new setup, we recommend using the versions from your cloud storage to ensure you have the latest content.\n\n` +
+                        `Click OK to overwrite local files with cloud versions, or Cancel to keep local versions (may create duplicates).`
+                    );
 
-                    if (matchingRemoteId !== undefined) {
-                        console.log(`Dedup: local #${localItem.id} matches cloud #${matchingRemoteId} at "${fullPath}"`);
-                        await db.items.delete(localItem.id);
-                        await db.contents.delete(localItem.id);
-                        localMap.delete(localItem.id);
-                        dedupedIds.add(localItem.id);
+                    if (confirm) {
+                        for (const localItem of pathMatches) {
+                            if (localItem.id === undefined) continue;
+                            console.log(`Dedup: Overwriting local "${localItem.title}" with cloud version.`);
+                            await db.items.delete(localItem.id);
+                            await db.contents.delete(localItem.id);
+                            localMap.delete(localItem.id);
+                            dedupedIds.add(localItem.id);
+                        }
+                        // Refresh local items
+                        localItems = await db.items.toArray();
                     }
                 }
+            }
 
-                if (dedupedIds.size > 0) {
-                    // Refresh local items after cleaning up duplicates
-                    localItems = await db.items.toArray();
-                    console.log(`Dedup: removed ${dedupedIds.size} vault duplicates that exist in cloud.`);
+            // --- ID COLLISION SAFETY (First Sync Only) ---
+            // If a local item has an ID that exists in the cloud, but the PATHS don't match,
+            // we MUST re-assign the local ID. Otherwise, we might upload this note
+            // over a completely unrelated cloud note just because of an ID collision.
+            for (const localItem of localItems) {
+                if (localItem.id === undefined || localItem.isDeleted || dedupedIds.has(localItem.id)) continue;
+
+                const remoteMeta = remoteManifest.items[localItem.id];
+                if (remoteMeta) {
+                    // It's an ID collision. Check if it's the SAME note by path.
+                    const parentPath = getFullPath(localItem.id, localItems);
+                    const localPath = parentPath ? `${parentPath}/${localItem.title}` : localItem.title;
+                    const remotePath = remoteMeta.parentPath ? `${remoteMeta.parentPath}/${remoteMeta.title}` : remoteMeta.title;
+
+                    if (localPath !== remotePath) {
+                        console.warn(`ID Collision detected for ID #${localItem.id}: Local "${localPath}" vs Cloud "${remotePath}". Re-assigning local ID.`);
+                        collisionsToReassign.push({ ...localItem });
+                    }
                 }
+            }
+
+            if (collisionsToReassign.length > 0) {
+                for (const item of collisionsToReassign) {
+                    const oldId = item.id!;
+                    const content = await db.contents.get(oldId);
+                    await db.items.delete(oldId);
+                    await db.contents.delete(oldId);
+                    localMap.delete(oldId);
+
+                    // Re-add to get a new auto-incremented ID
+                    const newId = await addItem({
+                        parentId: item.parentId,
+                        type: item.type,
+                        title: item.title,
+                        tags: item.tags,
+                        icon: item.icon
+                    }, content?.content || '', item.updated_at);
+
+                    console.log(`Re-assigned local #${oldId} to #${newId}`);
+                }
+                // Refresh local items one last time
+                localItems = await db.items.toArray();
+                localMap.clear();
+                localItems.forEach(item => { if (item.id !== undefined) localMap.set(item.id, item); });
             }
         }
 

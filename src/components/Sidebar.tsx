@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, addItem, type NoteItem } from '../lib/db';
+import { db, type NoteItem } from '../lib/db';
 import { triggerAutoSync } from '../lib/sync';
 import {
     Folder, FolderOpen, FileText, Plus, Trash2, X, Check,
-    Settings, HardDrive, Globe, Cloud, CloudOff, AlertCircle, Search
+    Settings, HardDrive, Globe, Cloud, CloudOff, AlertCircle, Search,
+    Tag, ChevronRight, ChevronDown
 } from 'lucide-react';
 import type { SyncStatus } from '../App';
 
@@ -19,10 +20,26 @@ interface SidebarProps {
     syncStatus?: SyncStatus;
     lastSyncTime?: number | null;
     onSync?: () => void;
+    onAddNote?: (parentId: number) => void;
+    onAddFolder?: (parentId: number) => void;
 }
 
-export default function Sidebar({ selectedNoteId, onSelectNote, isOpen, onClose, onOpenSettings, storageMode, syncStatus = 'disconnected', lastSyncTime, onSync }: SidebarProps) {
+export default function Sidebar({ selectedNoteId, onSelectNote, isOpen, onClose, onOpenSettings, storageMode, syncStatus = 'disconnected', lastSyncTime, onSync, onAddNote, onAddFolder }: SidebarProps) {
     const items = useLiveQuery(() => db.items.filter(item => !item.isDeleted).toArray());
+
+    const [selectedTag, setSelectedTag] = useState<string | null>(null);
+    const [isTagsOpen, setIsTagsOpen] = useState(true);
+
+    const uniqueTags = useMemo(() => {
+        if (!items) return [];
+        const tags = new Set<string>();
+        items.forEach(item => {
+            if (item.tags) {
+                item.tags.forEach(t => tags.add(t));
+            }
+        });
+        return Array.from(tags).sort();
+    }, [items]);
 
     const tree = useMemo(() => {
         if (!items) return [];
@@ -45,6 +62,27 @@ export default function Sidebar({ selectedNoteId, onSelectNote, isOpen, onClose,
             }
         });
 
+        if (selectedTag) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const filterTree = (nodes: any[]): any[] => {
+                return nodes.map(n => {
+                    if (n.type === 'note') {
+                        if (n.tags && n.tags.includes(selectedTag)) return n;
+                        return null;
+                    }
+                    if (n.type === 'folder' && n.children) {
+                        const filteredChildren = filterTree(n.children);
+                        if (filteredChildren.length > 0) {
+                            return { ...n, children: filteredChildren };
+                        }
+                    }
+                    return null;
+                }).filter(Boolean);
+            };
+            const filteredRoots = filterTree(roots);
+            roots.splice(0, roots.length, ...filteredRoots);
+        }
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sortTree = (nodes: any[]) => {
             nodes.sort((a, b) => {
@@ -60,19 +98,14 @@ export default function Sidebar({ selectedNoteId, onSelectNote, isOpen, onClose,
         };
         sortTree(roots);
         return roots;
-    }, [items]);
+    }, [items, selectedTag]);
 
-    const handleAddAtRoot = async (type: 'folder' | 'note') => {
-        const title = type === 'folder' ? 'New Folder' : 'New Note';
-        await addItem({
-            parentId: 0,
-            type,
-            title
-        }, '');
-        localStorage.setItem('keim_has_user_edits', 'true');
+    const handleAddAtRoot = (type: 'folder' | 'note') => {
+        if (type === 'note') onAddNote?.(0);
+        else onAddFolder?.(0);
     };
 
-    const headerIconBtnClass = "p-1 hover:bg-light-bg dark:hover:bg-dark-bg rounded text-dark-bg dark:text-light-bg transition-colors";
+    const headerIconBtnClass = "p-2 md:p-1 hover:bg-light-bg dark:hover:bg-dark-bg rounded text-dark-bg dark:text-light-bg transition-colors";
 
     return (
         <>
@@ -92,7 +125,13 @@ export default function Sidebar({ selectedNoteId, onSelectNote, isOpen, onClose,
                 `}
             >
                 <div className="flex flex-col h-full">
-                    <div className="p-4 flex items-center justify-end border-b border-light-bg dark:border-dark-bg shrink-0">
+                    <div
+                        className="p-4 flex items-center justify-end border-b border-light-bg dark:border-dark-bg shrink-0"
+                        style={{
+                            paddingTop: 'calc(1rem + var(--spacing-safe-top, 0px))',
+                            paddingLeft: 'calc(1rem + var(--spacing-safe-left, 0px))'
+                        }}
+                    >
                         <div className="flex gap-1 items-center shrink-0">
                             <button
                                 onClick={() => {
@@ -157,12 +196,71 @@ export default function Sidebar({ selectedNoteId, onSelectNote, isOpen, onClose,
                                 selectedId={selectedNoteId}
                                 onSelect={onSelectNote}
                                 level={0}
+                                onAddNote={onAddNote}
+                                onAddFolder={onAddFolder}
                             />
                         ))}
+
+                        {/* --- Tags Archive Section --- */}
+                        {uniqueTags.length > 0 && (
+                            <div className="mt-4 border-t border-light-bg dark:border-dark-bg pt-2">
+                                <div
+                                    className="flex items-center justify-between px-4 py-1.5 cursor-pointer hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 text-dark-bg/70 dark:text-light-bg/70 transition-colors select-none"
+                                    onClick={() => setIsTagsOpen(!isTagsOpen)}
+                                >
+                                    <div className="flex items-center gap-1.5 font-medium text-xs uppercase tracking-wider">
+                                        {isTagsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                        <Tag size={12} className="opacity-70" />
+                                        Tags
+                                    </div>
+                                    {selectedTag && (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setSelectedTag(null); }}
+                                            className="text-xs flex items-center gap-1 bg-dark-bg/10 dark:bg-light-bg/10 px-1.5 rounded hover:bg-dark-bg/20 dark:hover:bg-light-bg/20 font-medium"
+                                        >
+                                            <X size={10} /> Clear
+                                        </button>
+                                    )}
+                                </div>
+                                {isTagsOpen && (
+                                    <div className="flex flex-col mt-1 mb-2">
+                                        {uniqueTags.map(tag => {
+                                            const isSelected = selectedTag === tag;
+                                            const tagCount = items?.filter(i => i.tags && i.tags.includes(tag)).length || 0;
+                                            return (
+                                                <div
+                                                    key={tag}
+                                                    onClick={() => setSelectedTag(isSelected ? null : tag)}
+                                                    className={`
+                                                        px-8 py-1.5 cursor-pointer text-sm flex items-center justify-between group
+                                                        ${isSelected
+                                                            ? 'bg-dark-bg/10 dark:bg-light-bg/10 text-dark-bg dark:text-light-bg font-medium'
+                                                            : 'text-dark-bg/70 dark:text-light-bg/70 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 hover:text-dark-bg dark:hover:text-light-bg'
+                                                        }
+                                                    `}
+                                                    title={`${tagCount} notes`}
+                                                >
+                                                    <span className="truncate">#{tag}</span>
+                                                    <span className={`text-xs opacity-0 group-hover:opacity-100 transition-opacity ${isSelected ? 'opacity-50' : ''}`}>
+                                                        {tagCount}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {/* Bottom Status Bar */}
-                    <div className="p-2 border-t border-light-bg dark:border-dark-bg shrink-0 flex items-center justify-between">
+                    <div
+                        className="p-2 border-t border-light-bg dark:border-dark-bg shrink-0 flex items-center justify-between"
+                        style={{
+                            paddingBottom: 'calc(0.5rem + var(--spacing-safe-bottom, 0px))',
+                            paddingLeft: 'calc(0.5rem + var(--spacing-safe-left, 0px))'
+                        }}
+                    >
                         <div className="flex items-center gap-1">
                             {/* Settings Icon-only button */}
                             <button
@@ -197,9 +295,11 @@ interface TreeNodeProps {
     selectedId: number | null;
     onSelect: (id: number) => void;
     level: number;
+    onAddNote?: (parentId: number) => void;
+    onAddFolder?: (parentId: number) => void;
 }
 
-function TreeNode({ item, selectedId, onSelect, level }: TreeNodeProps) {
+function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder }: TreeNodeProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
@@ -230,6 +330,16 @@ function TreeNode({ item, selectedId, onSelect, level }: TreeNodeProps) {
     }, [selectedId, isOpen]);
 
     useEffect(() => {
+        const handleRename = (e: CustomEvent) => {
+            if (e.detail === item.id) {
+                setIsRenaming(true);
+            }
+        };
+        window.addEventListener('keim_rename_node', handleRename as EventListener);
+        return () => window.removeEventListener('keim_rename_node', handleRename as EventListener);
+    }, [item.id]);
+
+    useEffect(() => {
         if (isRenaming && inputRef.current) {
             inputRef.current.focus();
             inputRef.current.select();
@@ -237,18 +347,13 @@ function TreeNode({ item, selectedId, onSelect, level }: TreeNodeProps) {
     }, [isRenaming]);
 
     const paddingLeft = `${(level * 12) + 16}px`;
-    const actionBtnClass = "hover:scale-110 transition-transform opacity-70 hover:opacity-100";
+    const actionBtnClass = "hover:scale-110 p-1.5 md:p-0.5 rounded transition-transform opacity-100 md:opacity-70 hover:opacity-100 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5";
 
-    const handleAddChild = async (e: React.MouseEvent, type: 'folder' | 'note') => {
+    const handleAddChild = (e: React.MouseEvent, type: 'folder' | 'note') => {
         e.stopPropagation();
-        const title = type === 'folder' ? 'New Folder' : 'New Note';
-        await addItem({
-            parentId: item.id!,
-            type,
-            title
-        }, '');
-        localStorage.setItem('keim_has_user_edits', 'true');
         setIsOpen(true);
+        if (type === 'note') onAddNote?.(item.id!);
+        else onAddFolder?.(item.id!);
     };
 
     const handleDeleteClick = (e: React.MouseEvent) => {
@@ -340,7 +445,7 @@ function TreeNode({ item, selectedId, onSelect, level }: TreeNodeProps) {
             if (item.type === 'note') {
                 const contentObj = await db.contents.get(item.id!);
                 if (contentObj) {
-                    updateSearchIndex(item.id!, newTitle, contentObj.content, item.parentId);
+                    updateSearchIndex(item.id!, newTitle, contentObj.content, item.parentId, item.tags);
                 }
             }
 
@@ -506,7 +611,9 @@ function TreeNode({ item, selectedId, onSelect, level }: TreeNodeProps) {
                 onDrop={handleDrop}
             >
                 <div className="flex items-center gap-2 truncate flex-1 min-w-0 pointer-events-none">
-                    {item.type === 'folder' ? (
+                    {item.icon ? (
+                        <span className="text-base leading-none flex-shrink-0">{item.icon}</span>
+                    ) : item.type === 'folder' ? (
                         isOpen ? <FolderOpen size={16} className="opacity-80 flex-shrink-0" /> : <Folder size={16} className="opacity-80 flex-shrink-0" />
                     ) : (
                         <FileText size={16} className="opacity-80 flex-shrink-0" />
@@ -528,11 +635,11 @@ function TreeNode({ item, selectedId, onSelect, level }: TreeNodeProps) {
                 </div>
 
                 {!isRenaming && (
-                    <div className="flex items-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity ml-2 shrink-0 pointer-events-auto">
+                    <div className="flex items-center gap-2 md:gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity ml-2 shrink-0 pointer-events-auto">
                         {isConfirmingDelete ? (
                             <div className="flex items-center gap-1 bg-red-500/10 px-1 rounded">
-                                <button onClick={confirmDelete} className="text-red-600 dark:text-red-400 p-0.5 hover:scale-110" title="Confirm Delete"><Check size={14} /></button>
-                                <button onClick={cancelDelete} className="text-dark-bg dark:text-light-bg opacity-70 p-0.5 hover:scale-110" title="Cancel"><X size={14} /></button>
+                                <button onClick={confirmDelete} className="text-red-600 dark:text-red-400 p-1.5 hover:scale-110" title="Confirm Delete"><Check size={14} /></button>
+                                <button onClick={cancelDelete} className="text-dark-bg dark:text-light-bg opacity-70 p-1.5 hover:scale-110" title="Cancel"><X size={14} /></button>
                             </div>
                         ) : (
                             <>
@@ -542,7 +649,7 @@ function TreeNode({ item, selectedId, onSelect, level }: TreeNodeProps) {
                                         <button onClick={(e) => handleAddChild(e, 'folder')} className={actionBtnClass} title="Add Subfolder"><Folder size={14} /></button>
                                     </>
                                 )}
-                                <button onClick={handleDeleteClick} className={`${actionBtnClass} hover:text-red-500`} title="Delete"><Trash2 size={14} /></button>
+                                <button onClick={handleDeleteClick} className={`${actionBtnClass} hover:text-red-500 hover:bg-red-500/10 dark:hover:bg-red-500/10`} title="Delete"><Trash2 size={14} /></button>
                             </>
                         )}
                     </div>
@@ -552,15 +659,16 @@ function TreeNode({ item, selectedId, onSelect, level }: TreeNodeProps) {
             {item.type === 'folder' && isOpen && (
                 <div>
                     {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    {item.children.map((child: any) => (
-                        <TreeNode
-                            key={child.id}
-                            item={child}
-                            selectedId={selectedId}
-                            onSelect={onSelect}
-                            level={level + 1}
-                        />
-                    ))}
+                    {item.children.map((child: any) => <TreeNode
+                        key={child.id}
+                        item={child}
+                        selectedId={selectedId}
+                        onSelect={onSelect}
+                        level={level + 1}
+                        onAddNote={onAddNote}
+                        onAddFolder={onAddFolder}
+                    />
+                    )}
                 </div>
             )}
         </div>
