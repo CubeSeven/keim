@@ -197,6 +197,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                             onClick={async () => {
                                                                 setPickingVault(true);
                                                                 try {
+                                                                    handleDisconnect(); // Force disconnect Dropbox for safety
                                                                     await onChangeVault();
                                                                     onClose();
                                                                 } finally {
@@ -211,7 +212,11 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                     )}
                                                     {onSwitchToBrowserStorage && (
                                                         <button
-                                                            onClick={async () => { await onSwitchToBrowserStorage(); onClose(); }}
+                                                            onClick={async () => {
+                                                                handleDisconnect(); // Force disconnect Dropbox for safety
+                                                                await onSwitchToBrowserStorage();
+                                                                onClose();
+                                                            }}
                                                             className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-dark-bg/70 dark:text-light-bg/70 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 transition-all w-full text-left"
                                                         >
                                                             <Database size={16} className="opacity-70" />

@@ -5,7 +5,7 @@ import { db, addItem, getFullPath } from './lib/db';
 import { PanelLeft } from 'lucide-react';
 import SettingsModal from './components/SettingsModal';
 import WelcomeScreen from './components/WelcomeScreen';
-import { authorizeDropbox, syncNotesWithDrive, isDriveConnected, initSync } from './lib/sync';
+import { authorizeDropbox, syncNotesWithDrive, isDriveConnected, initSync, disconnectDropbox } from './lib/sync';
 import {
   getStorageMode, setStorageMode,
   openVaultPicker, restoreVaultHandle, getVaultName,
@@ -269,6 +269,7 @@ function App() {
       const mode = getStorageMode();
 
       if (mode === 'unset') {
+        disconnectDropbox();
         setAppState('welcome');
         return;
       }

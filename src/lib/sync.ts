@@ -221,24 +221,16 @@ export async function syncNotesWithDrive(background = false) {
                 });
 
                 if (pathMatches.length > 0) {
-                    const confirm = window.confirm(
-                        `Sync Warning: ${pathMatches.length} of your local files match notes already in Dropbox. \n\n` +
-                        `Since this is a new setup, we recommend using the versions from your cloud storage to ensure you have the latest content.\n\n` +
-                        `Click OK to overwrite local files with cloud versions, or Cancel to keep local versions (may create duplicates).`
-                    );
-
-                    if (confirm) {
-                        for (const localItem of pathMatches) {
-                            if (localItem.id === undefined) continue;
-                            console.log(`Dedup: Overwriting local "${localItem.title}" with cloud version.`);
-                            await db.items.delete(localItem.id);
-                            await db.contents.delete(localItem.id);
-                            localMap.delete(localItem.id);
-                            dedupedIds.add(localItem.id);
-                        }
-                        // Refresh local items
-                        localItems = await db.items.toArray();
+                    for (const localItem of pathMatches) {
+                        if (localItem.id === undefined) continue;
+                        console.log(`Dedup: Automatically overwriting local "${localItem.title}" with cloud version.`);
+                        await db.items.delete(localItem.id);
+                        await db.contents.delete(localItem.id);
+                        localMap.delete(localItem.id);
+                        dedupedIds.add(localItem.id);
                     }
+                    // Refresh local items
+                    localItems = await db.items.toArray();
                 }
             }
 
@@ -297,22 +289,16 @@ export async function syncNotesWithDrive(background = false) {
             });
 
             if (localOnlyItems.length > 0) {
-                const keepOrphans = window.confirm(
-                    `New Files Detected: ${localOnlyItems.length} of your local files do not exist in Dropbox.\n\n` +
-                    `Do you want to UPLOAD these to Dropbox as new notes?\n\n` +
-                    `Click OK to upload them, or Cancel to DISCARD them (recommended if you are restoring an old vault).`
-                );
-
-                if (!keepOrphans) {
-                    for (const item of localOnlyItems) {
-                        console.log(`Sync: Discarding orphan local file "${item.title}"`);
-                        await db.items.delete(item.id!);
-                        await db.contents.delete(item.id!);
-                        dedupedIds.add(item.id!);
-                    }
-                    // Final refresh
-                    localItems = await db.items.toArray();
+                // Silently discard local orphans on first sync. 
+                // We no longer ask since the cloud is the absolute truth.
+                for (const item of localOnlyItems) {
+                    console.log(`Sync: Silently discarding orphan local file "${item.title}"`);
+                    await db.items.delete(item.id!);
+                    await db.contents.delete(item.id!);
+                    dedupedIds.add(item.id!);
                 }
+                // Final refresh
+                localItems = await db.items.toArray();
             }
 
             localMap.clear();
@@ -354,27 +340,9 @@ export async function syncNotesWithDrive(background = false) {
                 // --- UPDATE vs UPDATE CONFLICT ---
                 // If local file was ALSO updated since the last sync, we have a conflict!
                 if (localItem && lastSyncTime && localItem.updated_at > lastSyncTime && !remoteMeta.isDeleted) {
-                    console.warn(`Conflict detected for note "${localItem.title}"`);
-
-                    // Bail if it's a folder, we only duplicate notes
-                    if (localItem.type === 'note') {
-                        // 1. Save the local conflicted version as a NEW file
-                        const localContent = await db.contents.get(localItem.id!);
-                        if (localContent) {
-                            const conflictTitle = `${localItem.title} (Local Conflict)`;
-                            const newId = await addItem({
-                                parentId: localItem.parentId,
-                                type: 'note',
-                                title: conflictTitle
-                            }, localContent.content);
-
-                            // Immediately queue this new conflict file to be uploaded to Dropbox
-                            const newItem = await db.items.get(newId);
-                            if (newItem) toUpload.push(newItem);
-
-                            console.log(`Created conflicted copy: "${conflictTitle}"`);
-                        }
-                    }
+                    // Strict Cloud Truth: we DO NOT create a "Local Conflict" file.
+                    // We let the cloud version seamlessly overwrite the local edits.
+                    console.warn(`Conflict detected for note "${localItem.title}". Cloud version strictly wins.`);
                 }
 
                 if (!remoteMeta.isDeleted || localItem) toDownload.push(id);
