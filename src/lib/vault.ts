@@ -21,8 +21,12 @@ export function getStorageMode(): 'vault' | 'indexeddb' | 'unset' {
     return 'unset';
 }
 
-export function setStorageMode(mode: 'vault' | 'indexeddb') {
-    localStorage.setItem(VAULT_MODE_LS_KEY, mode);
+export function setStorageMode(mode: 'vault' | 'indexeddb' | 'unset') {
+    if (mode === 'unset') {
+        localStorage.removeItem(VAULT_MODE_LS_KEY);
+    } else {
+        localStorage.setItem(VAULT_MODE_LS_KEY, mode);
+    }
 }
 
 // --- Vault Handle Persistence (via IndexedDB directly) ---
@@ -60,6 +64,11 @@ async function loadVaultHandle(): Promise<FileSystemDirectoryHandle | null> {
     }
 }
 
+export async function hasSavedVault(): Promise<boolean> {
+    const handle = await loadVaultHandle();
+    return !!handle;
+}
+
 // --- Vault Picker ---
 
 let _vaultHandle: FileSystemDirectoryHandle | null = null;
@@ -78,18 +87,29 @@ export async function openVaultPicker(): Promise<FileSystemDirectoryHandle | nul
     }
 }
 
-export async function restoreVaultHandle(): Promise<FileSystemDirectoryHandle | null> {
+export async function restoreVaultHandle(requestPermissionIfPrompt = false): Promise<FileSystemDirectoryHandle | null> {
     const handle = await loadVaultHandle();
     if (!handle) return null;
     try {
-        // Re-request permission if needed
-        const permission = await (handle as unknown as { requestPermission: (options?: { mode?: 'read' | 'readwrite' }) => Promise<PermissionState> }).requestPermission({ mode: 'readwrite' });
+        // Using any since TypeScript types for FileSystemHandle are sometimes incomplete
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const handleAny = handle as any;
+
+        // 1. Check current permission silently
+        let permission = await handleAny.queryPermission({ mode: 'readwrite' });
+
+        // 2. Request permission if needed AND we are allowed to prompt (must be called from user gesture)
+        if (permission === 'prompt' && requestPermissionIfPrompt) {
+            permission = await handleAny.requestPermission({ mode: 'readwrite' });
+        }
+
         if (permission === 'granted') {
             _vaultHandle = handle;
             return handle;
         }
         return null;
-    } catch {
+    } catch (e) {
+        console.warn('Failed to restore vault handle', e);
         return null;
     }
 }

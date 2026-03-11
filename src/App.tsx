@@ -2,14 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Editor from './components/Editor';
 import { db, addItem, getFullPath } from './lib/db';
-import { PanelLeft } from 'lucide-react';
+import { PanelLeft, HardDrive } from 'lucide-react';
 import SettingsModal from './components/SettingsModal';
 import WelcomeScreen from './components/WelcomeScreen';
 import { authorizeDropbox, syncNotesWithDrive, isDriveConnected, initSync, disconnectDropbox } from './lib/sync';
 import {
   getStorageMode, setStorageMode,
   openVaultPicker, restoreVaultHandle, getVaultName,
-  readVaultTree, readNoteContent
+  readVaultTree, readNoteContent, hasSavedVault
 } from './lib/vault';
 import { CommandPalette } from './components/CommandPalette';
 import { buildSearchIndex } from './lib/search';
@@ -17,7 +17,7 @@ import MobileDock from './components/MobileDock';
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'disconnected';
 
-type AppState = 'loading' | 'welcome' | 'restore-vault' | 'ready';
+type AppState = 'loading' | 'welcome' | 'restore-vault' | 'needs-vault-permission' | 'ready';
 
 function App() {
   const [selectedNoteId, setSelectedNoteId] = useState<number | null>(() => {
@@ -275,16 +275,23 @@ function App() {
       }
 
       if (mode === 'vault') {
+        const hasSaved = await hasSavedVault();
+        if (!hasSaved) {
+          setAppState('welcome');
+          return;
+        }
+
         setAppState('restore-vault');
-        const handle = await restoreVaultHandle();
+        // Try silent restore first
+        const handle = await restoreVaultHandle(false);
         if (handle) {
           await loadVaultIntoDb();
           setVaultName(getVaultName());
           setAppState('ready');
           setSidebarKey(k => k + 1);
         } else {
-          // Couldn't restore (permission denied), go to welcome
-          setAppState('welcome');
+          // Silent restore failed, we need a user gesture
+          setAppState('needs-vault-permission');
         }
         return;
       }
@@ -492,7 +499,47 @@ function App() {
       <div className="flex h-screen w-full flex-col items-center justify-center bg-light-bg dark:bg-dark-bg gap-4 p-6 text-center">
         <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
         <p className="text-dark-bg/70 dark:text-light-bg/70">Reconnecting to your vault...</p>
-        <p className="text-dark-bg/40 dark:text-light-bg/40 text-sm">Your browser may ask for permission.</p>
+      </div>
+    );
+  }
+
+  if (appState === 'needs-vault-permission') {
+    return (
+      <div className="flex h-screen w-full flex-col items-center justify-center bg-light-bg dark:bg-dark-bg gap-6 p-6 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-500">
+          <HardDrive size={32} />
+        </div>
+        <div className="space-y-2 max-w-sm">
+          <h2 className="text-2xl font-bold text-dark-bg dark:text-light-bg">Folder Access Required</h2>
+          <p className="text-dark-bg/70 dark:text-light-bg/70 leading-relaxed text-sm">
+            For security, your browser requires permission to access your local Vault folder each time you restart the app.
+          </p>
+        </div>
+        <button
+          onClick={async () => {
+            const handle = await restoreVaultHandle(true);
+            if (handle) {
+              setAppState('restore-vault'); // show spinner during load
+              await loadVaultIntoDb();
+              setVaultName(getVaultName());
+              setAppState('ready');
+              setSidebarKey(k => k + 1);
+            }
+          }}
+          className="px-6 py-3 rounded-lg text-sm font-semibold text-white bg-indigo-500 hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-500/25"
+        >
+          Grant Folder Access
+        </button>
+        <button
+          onClick={() => {
+            disconnectDropbox(); // Safety reset
+            setStorageMode('unset');
+            setAppState('welcome');
+          }}
+          className="text-sm text-dark-bg/50 dark:text-light-bg/50 hover:text-dark-bg dark:hover:text-light-bg transition-colors"
+        >
+          Choose different storage
+        </button>
       </div>
     );
   }
