@@ -5,7 +5,7 @@ import { triggerAutoSync } from '../lib/sync';
 import {
     Folder, FolderOpen, FileText, Plus, Trash2, X, Check,
     Settings, HardDrive, Globe, Cloud, CloudOff, AlertCircle, Search,
-    Tag, ChevronRight, ChevronDown
+    Tag, ChevronRight, ChevronDown, Lock, ArrowRight
 } from 'lucide-react';
 import type { SyncStatus } from '../App';
 
@@ -17,14 +17,20 @@ interface SidebarProps {
     onOpenSettings: () => void;
     vaultName?: string;
     storageMode?: 'vault' | 'indexeddb' | 'unset';
-    syncStatus?: SyncStatus;
-    lastSyncTime?: number | null;
+    syncStatus: SyncStatus;
+    lastSyncTime: number | null;
     onSync?: () => void;
     onAddNote?: (parentId: number) => void;
     onAddFolder?: (parentId: number) => void;
+    isVaultLocked?: boolean;
+    onUnlockVault?: () => void;
 }
 
-export default function Sidebar({ selectedNoteId, onSelectNote, isOpen, onClose, onOpenSettings, storageMode, syncStatus = 'disconnected', lastSyncTime, onSync, onAddNote, onAddFolder }: SidebarProps) {
+export default function Sidebar({
+    selectedNoteId, onSelectNote, isOpen, onClose, onOpenSettings,
+    vaultName, storageMode, syncStatus, lastSyncTime, onSync, onAddNote, onAddFolder,
+    isVaultLocked, onUnlockVault
+}: SidebarProps) {
     const items = useLiveQuery(() => db.items.filter(item => !item.isDeleted).toArray());
 
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -270,7 +276,14 @@ export default function Sidebar({ selectedNoteId, onSelectNote, isOpen, onClose,
                             >
                                 <Settings size={16} className="opacity-70" />
                             </button>
-
+                            <div className="flex-1 min-w-0">
+                                <h1 className="text-sm font-bold text-dark-bg dark:text-light-bg truncate leading-none">
+                                    {vaultName || 'My Notes'}
+                                </h1>
+                                <p className="text-[10px] text-dark-bg/40 dark:text-light-bg/40 font-medium uppercase tracking-wider mt-0.5">
+                                    {storageMode === 'vault' ? 'Local Vault' : 'Browser Storage'}
+                                </p>
+                            </div>
                             {/* Storage type icon */}
                             <div
                                 className="flex items-center justify-center p-1.5 rounded-md text-dark-bg/60 dark:text-light-bg/60"
@@ -283,6 +296,23 @@ export default function Sidebar({ selectedNoteId, onSelectNote, isOpen, onClose,
                         {/* Cloud sync status */}
                         <SyncStatusBadge status={syncStatus} lastSyncTime={lastSyncTime} onSync={onSync} />
                     </div>
+                    {isVaultLocked && (
+                        <button
+                            onClick={onUnlockVault}
+                            className="w-full flex items-center justify-between p-3 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-500/20 group text-left"
+                        >
+                            <div className="flex items-center gap-2">
+                                <div className="p-1.5 bg-white/20 rounded-md">
+                                    <Lock size={14} className="group-hover:animate-bounce" />
+                                </div>
+                                <div>
+                                    <span className="text-[11px] font-bold uppercase tracking-wider block leading-none">Vault Locked</span>
+                                    <span className="text-[10px] opacity-90 leading-none">Tap to Grant Access</span>
+                                </div>
+                            </div>
+                            <ArrowRight size={14} className="opacity-70 group-hover:translate-x-1 transition-transform" />
+                        </button>
+                    )}
                 </div>
             </div>
         </>

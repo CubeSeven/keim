@@ -7,7 +7,7 @@ import { updateSearchIndex } from '../lib/search';
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react';
 import { Crepe } from '@milkdown/crepe';
 import EmojiPicker from 'emoji-picker-react';
-import { SmilePlus, X, Tag, Plus } from 'lucide-react';
+import { SmilePlus, X, Tag, Plus, Lock, ArrowRight } from 'lucide-react';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
 import 'katex/dist/katex.min.css';
 import '@milkdown/crepe/theme/common/style.css';
@@ -15,6 +15,8 @@ import '@milkdown/crepe/theme/frame.css';
 
 interface EditorProps {
     noteId: number;
+    isVaultLocked?: boolean;
+    onUnlockVault?: () => Promise<boolean>;
 }
 
 interface CrepeBodyProps {
@@ -56,7 +58,7 @@ function CrepeBody({ content, noteId, onSave }: CrepeBodyProps) {
     return <Milkdown />;
 }
 
-export default function Editor({ noteId }: EditorProps) {
+export default function Editor({ noteId, isVaultLocked, onUnlockVault }: EditorProps) {
     const note = useLiveQuery(() => db.items.get(noteId), [noteId]);
     const noteContent = useLiveQuery(() => db.contents.get(noteId), [noteId]);
     const [title, setTitle] = useState('');
@@ -284,6 +286,26 @@ export default function Editor({ noteId }: EditorProps) {
                     paddingTop: 'calc(3rem + var(--spacing-safe-top, 0px))'
                 }}
             >
+                {/* ── Vault Locked Banner ── */}
+                {isVaultLocked && (
+                    <div className="mb-10 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-indigo-500/20">
+                                <Lock size={18} />
+                            </div>
+                            <div className="text-left">
+                                <h4 className="text-sm font-bold text-dark-bg dark:text-light-bg leading-tight">Vault is Locked (Read Only)</h4>
+                                <p className="text-[11px] opacity-70 leading-tight">Browser security requires re-granting access to your folder.</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={onUnlockVault}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-500 text-white text-xs font-bold hover:bg-indigo-600 transition-all shadow-md active:scale-95 whitespace-nowrap"
+                        >
+                            Grant Access <ArrowRight size={14} />
+                        </button>
+                    </div>
+                )}
 
                 {/* ── Top Actions & Headers ── */}
                 <div className="group flex flex-col items-start gap-1 mb-2">

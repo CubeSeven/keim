@@ -81,6 +81,7 @@ function App() {
   };
   const [appState, setAppState] = useState<AppState>('loading');
   const [isPickingVault, setIsPickingVault] = useState(false);
+  const [isVaultLocked, setIsVaultLocked] = useState(false);
   const [vaultName, setVaultName] = useState<string>('');
   // Sidebar key forces re-render when vault loads new notes
   const [sidebarKey, setSidebarKey] = useState(0);
@@ -290,8 +291,10 @@ function App() {
           setAppState('ready');
           setSidebarKey(k => k + 1);
         } else {
-          // Silent restore failed, we need a user gesture
-          setAppState('needs-vault-permission');
+          // Silent restore failed — enter app in read-only / locked mode
+          setIsVaultLocked(true);
+          setAppState('ready');
+          setSidebarKey(k => k + 1);
         }
         return;
       }
@@ -415,6 +418,20 @@ function App() {
   };
 
   // --- Welcome Screen Handlers ---
+  const handleUnlockVault = async () => {
+    const handle = await restoreVaultHandle(true);
+    if (handle) {
+      setIsVaultLocked(false);
+      await loadVaultIntoDb();
+      setVaultName(getVaultName());
+      setSidebarKey(k => k + 1);
+      // Kick off background sync now that we have access
+      syncNotesWithDrive(true).catch(console.warn);
+      return true;
+    }
+    return false;
+  };
+
   const handlePickVault = async () => {
     setIsPickingVault(true);
     try {
@@ -566,6 +583,8 @@ function App() {
         onSync={doSync}
         onAddNote={handleAddNote}
         onAddFolder={handleAddFolder}
+        isVaultLocked={isVaultLocked}
+        onUnlockVault={handleUnlockVault}
       />
 
       <SettingsModal
@@ -612,7 +631,12 @@ function App() {
       <main className={`flex-1 flex flex-col h-full w-full overflow-hidden relative transition-all duration-300 ease-in-out ${isSidebarOpen ? 'md:ml-64' : 'ml-0'}`}>
         <div className="flex-1 flex flex-col overflow-hidden">
           {selectedNoteId ? (
-            <Editor key={selectedNoteId} noteId={selectedNoteId} />
+            <Editor
+              key={selectedNoteId}
+              noteId={selectedNoteId}
+              isVaultLocked={isVaultLocked}
+              onUnlockVault={handleUnlockVault}
+            />
           ) : (
             <div className="flex h-full items-center justify-center text-dark-bg/50 dark:text-light-bg/50 p-6 text-center">
               <p>Select a note from the sidebar or create a new one.</p>
