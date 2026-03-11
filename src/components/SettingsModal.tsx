@@ -1,6 +1,7 @@
 import { X, Moon, Sun, Monitor, CheckCircle2, AlertCircle, Download, Upload, Info, HardDrive, Database, Settings2, Palette, RefreshCw } from 'lucide-react';
 import { syncNotesWithDrive, isDriveConnected, getLastSyncTime, authorizeDropbox, loginToDropbox, disconnectDropbox } from '../lib/sync';
 import { exportToFolder, importMarkdownFiles } from '../lib/export-import';
+import { APP_VERSION } from '../constants';
 import { useState, useEffect } from 'react';
 
 const DropboxIcon = ({ className }: { className?: string }) => (
@@ -149,7 +150,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                             </button>
                         </nav>
                         <div className="mt-auto p-4 hidden md:block">
-                            <p className="text-[10px] opacity-40 text-center font-mono uppercase tracking-widest">Keim Notes v1.2.0</p>
+                            <p className="text-[10px] opacity-40 text-center font-mono uppercase tracking-widest">Keim Notes v{APP_VERSION}</p>
                         </div>
                     </div>
 
