@@ -201,16 +201,18 @@ export async function syncNotesWithDrive(background = false) {
         const dedupedIds = new Set<number>();
         const collisionsToReassign: NoteItem[] = [];
 
-        if (!lastSyncTime) {
-            // Build a path→remoteId map from manifest metadata
-            const remotePathMap = new Map<string, number>();
-            for (const [idStr, meta] of Object.entries(remoteManifest.items)) {
-                if (meta.title && !meta.isDeleted) {
-                    const fp = meta.parentPath ? `${meta.parentPath}/${meta.title}` : meta.title;
-                    remotePathMap.set(fp, Number(idStr));
-                }
+        // ALWAYS build a path→remoteId map from manifest metadata for all syncs.
+        // This stops resurrected ghost files (which get new local IDs) from
+        // overwriting cloud files simply because their OS timestamp appears newer.
+        const remotePathMap = new Map<string, number>();
+        for (const [idStr, meta] of Object.entries(remoteManifest.items)) {
+            if (meta.title && !meta.isDeleted) {
+                const fp = meta.parentPath ? `${meta.parentPath}/${meta.title}` : meta.title;
+                remotePathMap.set(fp, Number(idStr));
             }
+        }
 
+        if (!lastSyncTime) {
             if (remotePathMap.size > 0) {
                 // Check if we should warn the user: are there many local files that match cloud paths
                 // but have suspicious timestamps (e.g., all recently modified)?
@@ -357,10 +359,30 @@ export async function syncNotesWithDrive(background = false) {
             if (dedupedIds.has(localItem.id)) continue; // Already removed as a vault duplicate
             const remoteMeta = remoteManifest.items[localItem.id];
 
+            // 1. Existing file check (has remoteMeta) OR local is decidedly newer
             if (!remoteMeta || localItem.updated_at > remoteMeta.updated_at) {
                 // Skip re-uploading a tombstone that is already recorded as deleted in the remote.
-                // This prevents an infinite deletion re-upload loop caused by updated_at drift.
                 if (localItem.isDeleted && remoteMeta?.isDeleted) continue;
+
+                // 2. GHOST DESTRUCTION / STRICT CLOUD WINS
+                // If this is a seemingly "new" local item (no remote collision by ID),
+                // we MUST check if it collides by PATH. If our local file system resurrected
+                // an old file (e.g. Android scoped storage deletion bug), it will hit this block
+                // with a new ID and a fresh OS timestamp. We kill it here.
+                if (!remoteMeta && !localItem.isDeleted) {
+                    const parentPath = getFullPath(localItem.id, localItems);
+                    const fullPath = parentPath ? `${parentPath}/${localItem.title}` : localItem.title;
+                    if (remotePathMap.has(fullPath)) {
+                        console.warn(`Sync: Destroying path collision ghost "${fullPath}" (Local ID: ${localItem.id}). Cloud version strictly wins.`);
+                        // Only delete from DB here. the toDownload pass below will pull the remote version 
+                        // and correctly overwrite the physical file with the cloud content.
+                        await db.items.delete(localItem.id);
+                        await db.contents.delete(localItem.id);
+                        dedupedIds.add(localItem.id);
+                        // Prevent it from being uploaded
+                        continue;
+                    }
+                }
 
                 // Prevent duplicate uploads if we just added it to toUpload during the conflict resolution
                 if (!toUpload.find(item => item.id === localItem.id)) {

@@ -149,7 +149,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                             </button>
                         </nav>
                         <div className="mt-auto p-4 hidden md:block">
-                            <p className="text-[10px] opacity-40 text-center font-mono uppercase tracking-widest">Keim Notes v1.0</p>
+                            <p className="text-[10px] opacity-40 text-center font-mono uppercase tracking-widest">Keim Notes v1.2.0</p>
                         </div>
                     </div>
 
