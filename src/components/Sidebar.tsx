@@ -568,6 +568,29 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder }:
             }
         }
 
+        const oldNote = allItems.find(i => i.id === draggedId);
+        if (oldNote && oldNote.parentId !== targetParentId) {
+            const { getStorageMode, deleteFromVault, notePathFromTitle, writeNoteToVault } = await import('../lib/vault');
+            const { getFullPath } = await import('../lib/db');
+            if (getStorageMode() === 'vault') {
+                if (oldNote.type === 'note') {
+                    const oldParentPath = getFullPath(oldNote.parentId, allItems);
+                    const newParentPath = getFullPath(targetParentId, allItems);
+                    const oldPath = notePathFromTitle(oldNote.title, oldParentPath);
+                    const newPath = notePathFromTitle(oldNote.title, newParentPath);
+                    if (oldPath !== newPath) {
+                        try {
+                            const contentObj = await appDb.contents.get(draggedId);
+                            await deleteFromVault(oldPath);
+                            await writeNoteToVault(newPath, contentObj?.content || '');
+                        } catch (err) {
+                            console.warn('Physical move in vault failed', err);
+                        }
+                    }
+                }
+            }
+        }
+
         await updateItem(draggedId, {
             parentId: targetParentId,
             order: newOrder

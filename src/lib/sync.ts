@@ -416,6 +416,15 @@ export async function syncNotesWithDrive(background = false) {
                                     try {
                                         const parentPath = getFullPath(item.id!, await db.items.toArray());
                                         const path = notePathFromTitle(item.title, parentPath);
+
+                                        if (existingLocal && existingLocal.type === 'note') {
+                                            const oldParentPath = getFullPath(existingLocal.parentId, localItems);
+                                            const oldPath = notePathFromTitle(existingLocal.title, oldParentPath);
+                                            if (oldPath !== path) {
+                                                await deleteFromVault(oldPath).catch(console.warn);
+                                            }
+                                        }
+
                                         await writeNoteToVault(path, contentData.content);
                                     } catch (e) { console.error('Failed to write synced note to vault', e); }
                                 }

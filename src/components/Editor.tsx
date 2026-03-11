@@ -229,9 +229,29 @@ export default function Editor({ noteId }: EditorProps) {
 
         if (titleTimeoutRef.current) window.clearTimeout(titleTimeoutRef.current);
         titleTimeoutRef.current = window.setTimeout(async () => {
+            const oldNote = await db.items.get(noteId);
+            const contentObj = await db.contents.get(noteId);
+
+            if (oldNote && oldNote.title !== newTitle && getStorageMode() === 'vault') {
+                try {
+                    const allItems = await db.items.toArray();
+                    const parentPath = getFullPath(oldNote.parentId, allItems);
+                    const oldPath = notePathFromTitle(oldNote.title, parentPath);
+                    const newPath = notePathFromTitle(newTitle, parentPath);
+
+                    if (oldPath !== newPath) {
+                        const { deleteFromVault } = await import('../lib/vault');
+                        await deleteFromVault(oldPath);
+                        await writeNoteToVault(newPath, contentObj?.content || '');
+                    }
+                } catch (err) {
+                    console.error('Failed to rename vault file from Editor', err);
+                }
+            }
+
             await db.items.update(noteId, { title: newTitle, updated_at: Date.now() });
-            if (note && noteContent) {
-                updateSearchIndex(noteId, newTitle, noteContent.content, note.parentId, note.tags);
+            if (note && contentObj) {
+                updateSearchIndex(noteId, newTitle, contentObj.content, note.parentId, note.tags);
             }
             localStorage.setItem('keim_has_user_edits', 'true');
             triggerAutoSync();
