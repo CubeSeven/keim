@@ -224,6 +224,17 @@ export async function syncNotesWithDrive(background = false) {
                     for (const localItem of pathMatches) {
                         if (localItem.id === undefined) continue;
                         console.log(`Dedup: Automatically overwriting local "${localItem.title}" with cloud version.`);
+
+                        if (storageMode === 'vault' && localItem.type === 'note') {
+                            try {
+                                const parentPath = getFullPath(localItem.parentId, localItems);
+                                const path = notePathFromTitle(localItem.title, parentPath);
+                                await deleteFromVault(path);
+                            } catch (e) {
+                                console.error('Failed to delete overwritten note from vault', e);
+                            }
+                        }
+
                         await db.items.delete(localItem.id);
                         await db.contents.delete(localItem.id);
                         localMap.delete(localItem.id);
@@ -293,6 +304,17 @@ export async function syncNotesWithDrive(background = false) {
                 // We no longer ask since the cloud is the absolute truth.
                 for (const item of localOnlyItems) {
                     console.log(`Sync: Silently discarding orphan local file "${item.title}"`);
+
+                    if (storageMode === 'vault' && item.type === 'note') {
+                        try {
+                            const parentPath = getFullPath(item.parentId, localItems);
+                            const path = notePathFromTitle(item.title, parentPath);
+                            await deleteFromVault(path);
+                        } catch (e) {
+                            console.error('Failed to delete orphan note from vault', e);
+                        }
+                    }
+
                     await db.items.delete(item.id!);
                     await db.contents.delete(item.id!);
                     dedupedIds.add(item.id!);
@@ -316,26 +338,6 @@ export async function syncNotesWithDrive(background = false) {
 
             // Remote file has an update
             if (!localItem || (localItem.updated_at !== undefined && remoteMeta.updated_at > localItem.updated_at)) {
-
-                // --- DELETE vs UPDATE CONFLICT ---
-                // If remote wants to DELETE but the local copy was updated since last sync,
-                // preserve the local update as a "(Recovered)" copy before applying deletion.
-                if (remoteMeta.isDeleted && localItem && lastSyncTime && localItem.updated_at > lastSyncTime) {
-                    if (localItem.type === 'note') {
-                        const localContent = await db.contents.get(localItem.id!);
-                        if (localContent) {
-                            const recoveredTitle = `${localItem.title} (Recovered)`;
-                            const newId = await addItem({
-                                parentId: localItem.parentId,
-                                type: 'note',
-                                title: recoveredTitle
-                            }, localContent.content);
-                            const newItem = await db.items.get(newId);
-                            if (newItem) toUpload.push(newItem);
-                            console.warn(`Delete/Update conflict: preserved local update as "${recoveredTitle}"`);
-                        }
-                    }
-                }
 
                 // --- UPDATE vs UPDATE CONFLICT ---
                 // If local file was ALSO updated since the last sync, we have a conflict!
