@@ -2,6 +2,7 @@ import { X, Moon, Sun, Monitor, CheckCircle2, AlertCircle, Download, Upload, Inf
 import { syncNotesWithDrive, isDriveConnected, getLastSyncTime, authorizeDropbox, loginToDropbox, disconnectDropbox } from '../lib/sync';
 import { exportToFolder, importMarkdownFiles } from '../lib/export-import';
 import { APP_VERSION } from '../constants';
+import { isFileSystemSupported } from '../lib/vault';
 import { useState, useEffect } from 'react';
 
 const DropboxIcon = ({ className }: { className?: string }) => (
@@ -34,9 +35,10 @@ interface SettingsModalProps {
     onSwitchToBrowserStorage?: () => Promise<void>;
     onSyncStatusChange?: (connected: boolean) => void;
     onInstallPWA?: () => void;
+    initialTab?: 'general' | 'sync' | 'appearance';
 }
 
-export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChangeVault, onSwitchToBrowserStorage, onSyncStatusChange, onInstallPWA }: SettingsModalProps) {
+export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChangeVault, onSwitchToBrowserStorage, onSyncStatusChange, onInstallPWA, initialTab = 'general' }: SettingsModalProps) {
     const [syncing, setSyncing] = useState(false);
     const [connected, setConnected] = useState(false);
     const [lastSync, setLastSync] = useState<number | null>(null);
@@ -51,12 +53,13 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
 
     useEffect(() => {
         if (isOpen) {
+            setActiveTab(initialTab);
             setConnected(isDriveConnected());
             setLastSync(getLastSyncTime());
             setError(null);
             setFeedback(null);
         }
-    }, [isOpen]);
+    }, [isOpen, initialTab]);
 
     const handleConnect = async () => {
         setError(null);
@@ -149,7 +152,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                 <Palette size={16} /> Appearance
                             </button>
                         </nav>
-                        <div className="mt-auto p-4 hidden md:block">
+                        <div className="mt-auto p-4">
                             <p className="text-[10px] opacity-40 text-center font-mono uppercase tracking-widest">Keim Notes v{APP_VERSION}</p>
                         </div>
                     </div>
@@ -173,7 +176,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                     </div>
 
                                     {/* Vault / Storage Section */}
-                                    {(onChangeVault || onSwitchToBrowserStorage) && (
+                                    {((onChangeVault && isFileSystemSupported()) || onSwitchToBrowserStorage) && (
                                         <div className="space-y-3">
                                             <label className="text-sm font-medium opacity-70 uppercase tracking-wider">Storage Mode</label>
                                             <div className="p-4 bg-light-ui/50 dark:bg-dark-ui/50 rounded-lg space-y-4 border border-light-ui dark:border-dark-ui">
@@ -192,7 +195,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                 </div>
 
                                                 <div className="flex flex-col gap-2 pt-2">
-                                                    {onChangeVault && (
+                                                    {onChangeVault && isFileSystemSupported() && (
                                                         <button
                                                             disabled={pickingVault}
                                                             onClick={async () => {
@@ -350,7 +353,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                         <p className="font-semibold text-sm">Dropbox</p>
                                                         {connected ? (
                                                             <p className="text-xs text-green-600 dark:text-green-500 font-medium flex items-center gap-1">
-                                                                <CheckCircle2 size={12} /> Connected
+                                                                <CheckCircle2 size={14} /> Connected
                                                             </p>
                                                         ) : (
                                                             <p className="text-xs opacity-60">Not connected</p>
@@ -375,7 +378,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                                 disabled={syncing}
                                                                 className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-semibold bg-dark-bg text-light-bg dark:bg-light-bg dark:text-dark-bg hover:opacity-90 transition-all disabled:opacity-50"
                                                             >
-                                                                <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+                                                                <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
                                                                 {syncing ? 'Syncing…' : 'Sync Now'}
                                                             </button>
                                                             <button

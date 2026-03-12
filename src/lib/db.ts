@@ -87,11 +87,17 @@ export async function deleteItem(id: number): Promise<void> {
 }
 
 /** Build the folder path for an item (e.g. "Work/Projects") */
+export function getItemPath(itemId: number, allItems: NoteItem[]): string {
+    if (itemId === 0) return '';
+    const item = allItems.find(i => i.id === itemId);
+    if (!item) return '';
+    if (item.parentId === 0) return item.title;
+    const parentPath = getItemPath(item.parentId, allItems);
+    return parentPath ? `${parentPath}/${item.title}` : item.title;
+}
+
 export function getFullPath(itemId: number, allItems: NoteItem[]): string {
     const item = allItems.find(i => i.id === itemId);
     if (!item || item.parentId === 0) return '';
-    const parentPath = getFullPath(item.parentId, allItems);
-    const parent = allItems.find(i => i.id === item.parentId);
-    if (!parent) return '';
-    return parentPath ? `${parentPath}/${parent.title}` : parent.title;
+    return getItemPath(item.parentId, allItems);
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, getFullPath } from '../lib/db';
+import { db, getFullPath, getItemPath } from '../lib/db';
 import { triggerAutoSync } from '../lib/sync';
 import { getStorageMode, writeNoteToVault, notePathFromTitle } from '../lib/vault';
 import { updateSearchIndex } from '../lib/search';
@@ -8,6 +8,7 @@ import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react';
 import { Crepe } from '@milkdown/crepe';
 import EmojiPicker from 'emoji-picker-react';
 import { SmilePlus, X, Tag, Plus, Lock, ArrowRight } from 'lucide-react';
+import { editorViewOptionsCtx } from '@milkdown/kit/core';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
 import 'katex/dist/katex.min.css';
 import '@milkdown/crepe/theme/common/style.css';
@@ -25,7 +26,17 @@ interface CrepeBodyProps {
     onSave: (markdown: string) => void;
 }
 
+// --- Module-level write-through buffer ---
+// Key: noteId, Value: latest markdown content
+// Synchronous — always up to date, never lost on unmount.
+const contentBuffer = new Map<number, string>();
+
 function CrepeBody({ content, noteId, onSave }: CrepeBodyProps) {
+    const onSaveRef = useRef(onSave);
+    useEffect(() => {
+        onSaveRef.current = onSave;
+    }, [onSave]);
+
     useEditor(
         (root) => {
             const crepe = new Crepe({
@@ -33,19 +44,42 @@ function CrepeBody({ content, noteId, onSave }: CrepeBodyProps) {
                 defaultValue: content,
             });
 
-            // Milkdown fires markdownUpdated once on initial mount with the default value,
-            // even before the user types. Skipping that first event prevents a phantom
-            // save → triggerAutoSync → unnecessary sync cascade on every editor mount.
             let isFirstUpdate = true;
 
-            crepe.editor
-                .config((ctx) => {
-                    ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
+    crepe.editor
+        .config((ctx) => {
+            // --- Android Double-Enter Fix ---
+            // Intercept Enter key on Android to prevent the browser from 
+            // inserting a native newline alongside Milkdown's handler.
+            ctx.update(editorViewOptionsCtx, (prev) => ({
+                ...prev,
+                handleKeyDown: (_view, event) => {
+                    const isAndroid = /Android/i.test(navigator.userAgent);
+                    if (isAndroid && event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault(); // Stop native ghost newline
+                        // Let Milkdown's keymap handles it.
+                        return false; 
+                    }
+                    return false;
+                }
+            }));
+
+            ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
+                        // Prevent phantom saves on initial mount, but don't swallow user edits.
+                        // Milkdown sometimes formats the initial parsed markdown.
                         if (isFirstUpdate) {
                             isFirstUpdate = false;
-                            return;
+                            const cleanMarkdown = markdown.trim();
+                            const cleanContent = content.trim();
+                            if (cleanMarkdown === cleanContent || cleanMarkdown === '') {
+                                return; // Ignore un-edited initialization
+                            }
                         }
-                        onSave(markdown);
+                        
+                        // 1. Synchronous buffer — NEVER lost, even on instant unmount
+                        contentBuffer.set(noteId, markdown);
+                        // 2. Debounced DB persist via parent callback
+                        onSaveRef.current(markdown);
                     });
                 })
                 .use(listener);
@@ -64,6 +98,24 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault }: EditorP
     const [title, setTitle] = useState('');
     const saveTimeoutRef = useRef<number | null>(null);
     const [syncRevision, setSyncRevision] = useState(0);
+
+    // The content to seed the editor with comes from three sources, in priority order:
+    // 1. The synchronous in-memory buffer (user typed but DB not yet written)
+    // 2. The IndexedDB content (freshly loaded from DB)
+    // 3. null => still loading from DB (noteContent is undefined from useLiveQuery)
+    //
+    // We use a separate 'editorReady' flag to distinguish between
+    // "DB says empty string" (editorReady=true, content='') and
+    // "DB hasn't responded yet" (editorReady=false). This prevents the
+    // editor from flickering by only mounting once we have authoritative content.
+    const dbLoaded = noteContent !== undefined; // undefined = Dexie still loading
+    const initialContent = useMemo(() => {
+        const buffered = contentBuffer.get(noteId);
+        if (buffered !== undefined) return buffered;  // User typed — use buffer
+        if (!dbLoaded) return '';                     // Still loading — show empty skeleton
+        return noteContent?.content ?? '';            // DB authoritative result
+    }, [noteId, noteContent, dbLoaded]);
+    const editorReady = dbLoaded || contentBuffer.has(noteId);
 
     const [showIconPicker, setShowIconPicker] = useState(false);
     const pickerRef = useRef<HTMLDivElement>(null);
@@ -135,7 +187,9 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault }: EditorP
                 const newTags = [...currentTags, newTag];
                 await db.items.update(noteId, { tags: newTags, updated_at: Date.now() });
                 if (noteContent) {
-                    updateSearchIndex(noteId, note.title, noteContent.content, note.parentId, newTags);
+                    const allItems = await db.items.toArray();
+                    const fullPath = getFullPath(noteId, allItems);
+                    updateSearchIndex(noteId, note.title, noteContent.content, note.parentId, fullPath, note.icon, newTags);
                 }
                 localStorage.setItem('keim_has_user_edits', 'true');
                 triggerAutoSync();
@@ -169,7 +223,9 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault }: EditorP
             const newTags = currentTags.filter(t => t !== tagToRemove);
             await db.items.update(noteId, { tags: newTags, updated_at: Date.now() });
             if (noteContent) {
-                updateSearchIndex(noteId, note.title, noteContent.content, note.parentId, newTags);
+                const allItems = await db.items.toArray();
+                const fullPath = getFullPath(noteId, allItems);
+                updateSearchIndex(noteId, note.title, noteContent.content, note.parentId, fullPath, note.icon, newTags);
             }
             localStorage.setItem('keim_has_user_edits', 'true');
             triggerAutoSync();
@@ -199,28 +255,52 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault }: EditorP
         return () => clearTimeout(timer);
     }, [note]);
 
+    const pendingSaveRef = useRef<string | null>(null);
+    // noteRef keeps a non-stale reference to `note` so cleanup functions can use it
+    const noteRef = useRef(note);
+    useEffect(() => { noteRef.current = note; }, [note]);
+
+    const persistContent = useCallback(async (markdown: string, noteItem: typeof note) => {
+        if (!noteItem) return;
+        await db.contents.put({ id: noteId, content: markdown });
+        await db.items.update(noteId, { updated_at: Date.now() });
+        const allItems = await db.items.toArray();
+        const fullPath = getFullPath(noteId, allItems);
+        updateSearchIndex(noteId, noteItem.title, markdown, noteItem.parentId, fullPath, noteItem.icon, noteItem.tags);
+        localStorage.setItem('keim_has_user_edits', 'true');
+        if (getStorageMode() === 'vault') {
+            const parentPath = getFullPath(noteId, allItems);
+            const path = notePathFromTitle(noteItem.title, parentPath);
+            writeNoteToVault(path, markdown).catch(console.warn);
+        }
+        triggerAutoSync();
+    }, [noteId]);
+
     const debouncedSaveContent = useCallback(
         (markdown: string) => {
+            pendingSaveRef.current = markdown;
             if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
-            saveTimeoutRef.current = window.setTimeout(async () => {
-                await db.contents.put({ id: noteId, content: markdown });
-                await db.items.update(noteId, { updated_at: Date.now() });
-                if (note) {
-                    updateSearchIndex(noteId, note.title, markdown, note.parentId, note.tags);
-                }
-                localStorage.setItem('keim_has_user_edits', 'true'); // Document touched Let Cloud know
-                // Write to vault if active
-                if (note && getStorageMode() === 'vault') {
-                    const allItems = await db.items.toArray();
-                    const parentPath = getFullPath(noteId, allItems);
-                    const path = notePathFromTitle(note.title, parentPath);
-                    writeNoteToVault(path, markdown).catch(console.warn);
-                }
-                triggerAutoSync();
+            saveTimeoutRef.current = window.setTimeout(() => {
+                pendingSaveRef.current = null;
+                persistContent(markdown, noteRef.current);
             }, 500);
         },
-        [noteId, note]
+        [persistContent]
     );
+
+    // On unmount: flush any pending debounced save immediately.
+    // The contentBuffer already preserved the text synchronously;
+    // this ensures the DB is also written ASAP.
+    useEffect(() => {
+        return () => {
+            const pending = pendingSaveRef.current;
+            if (pending !== null && saveTimeoutRef.current !== null) {
+                window.clearTimeout(saveTimeoutRef.current);
+                // Fire-and-forget — content_buffer is the safety net
+                persistContent(pending, noteRef.current);
+            }
+        };
+    }, [persistContent]);
 
     // Title editing debouncer
     const titleTimeoutRef = useRef<number | null>(null);
@@ -237,7 +317,7 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault }: EditorP
             if (oldNote && oldNote.title !== newTitle && getStorageMode() === 'vault') {
                 try {
                     const allItems = await db.items.toArray();
-                    const parentPath = getFullPath(oldNote.parentId, allItems);
+                    const parentPath = getItemPath(oldNote.parentId, allItems);
                     const oldPath = notePathFromTitle(oldNote.title, parentPath);
                     const newPath = notePathFromTitle(newTitle, parentPath);
 
@@ -253,7 +333,9 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault }: EditorP
 
             await db.items.update(noteId, { title: newTitle, updated_at: Date.now() });
             if (note && contentObj) {
-                updateSearchIndex(noteId, newTitle, contentObj.content, note.parentId, note.tags);
+                const allItems = await db.items.toArray();
+                const fullPath = getFullPath(noteId, allItems);
+                updateSearchIndex(noteId, newTitle, contentObj.content, note.parentId, fullPath, note.icon, note.tags);
             }
             localStorage.setItem('keim_has_user_edits', 'true');
             triggerAutoSync();
@@ -273,7 +355,7 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault }: EditorP
         return () => window.removeEventListener('keim_focus_title', handleFocus as EventListener);
     }, [noteId]);
 
-    if (!note || noteContent === undefined) return null;
+    if (!note || !editorReady) return null;
 
     return (
         /* Full-height scroll container */
@@ -283,7 +365,7 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault }: EditorP
                 className="mx-auto w-full px-6 md:px-12 lg:px-24 pb-64"
                 style={{
                     maxWidth: '720px',
-                    paddingTop: 'calc(3rem + var(--spacing-safe-top, 0px))'
+                    paddingTop: window.innerWidth < 768 ? 'calc(5rem + var(--spacing-safe-top, 0px))' : 'calc(3rem + var(--spacing-safe-top, 0px))'
                 }}
             >
                 {/* ── Vault Locked Banner ── */}
@@ -446,7 +528,7 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault }: EditorP
                     <MilkdownProvider>
                         <CrepeBody
                             noteId={noteId}
-                            content={noteContent?.content ?? ''}
+                            content={initialContent}
                             onSave={debouncedSaveContent}
                         />
                     </MilkdownProvider>

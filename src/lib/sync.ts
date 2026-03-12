@@ -1,4 +1,4 @@
-import { db, addItem, type NoteItem, getFullPath } from './db';
+import { db, addItem, type NoteItem, getItemPath } from './db';
 import { Dropbox, DropboxAuth } from 'dropbox';
 import { writeNoteToVault, deleteFromVault, getStorageMode, notePathFromTitle } from './vault';
 
@@ -10,18 +10,51 @@ let dbxAuth: DropboxAuth | null = null;
 let dbx: Dropbox | null = null;
 let lastSyncTime: number | null = Number(localStorage.getItem('keim_last_sync')) || null;
 
-export function broadcastSyncStatus(status: 'syncing' | 'synced' | 'error' | 'idle' | 'disconnected') {
-    window.dispatchEvent(new CustomEvent('keim_sync_status', { detail: status }));
-}
-
-const CLIENT_ID = import.meta.env.VITE_DROPBOX_APP_KEY as string;
+// When vault is locked (permission revoked on Android), we must NOT sync —
+// the local Dexie cache may be stale and uploading it would overwrite newer
+// cloud / disk data. Set this to true while isVaultLocked === true in App.tsx.
+let _vaultIsLocked = false;
+export function setVaultLocked(locked: boolean) { _vaultIsLocked = locked; }
 
 // All data lives under /keim/ inside the app‑folder so it works regardless of
 // whether the Dropbox app is configured as "App Folder" or "Full Dropbox".
 const APP_ROOT = '/keim';
 
+// Cross-tab synchronization
+const syncChannel = new BroadcastChannel('keim_sync');
+
+export function broadcastSyncStatus(status: 'syncing' | 'synced' | 'error' | 'idle' | 'disconnected') {
+    window.dispatchEvent(new CustomEvent('keim_sync_status', { detail: status }));
+    // Also notify other tabs
+    if (status === 'synced' || status === 'error') {
+        syncChannel.postMessage({ type: 'sync_status', status });
+    }
+}
+
 export function isDriveConnected() { return !!dbx; }
 export function getLastSyncTime() { return lastSyncTime; }
+
+/**
+ * Run an array of async tasks with a maximum concurrency.
+ * This is the key perf primitive: lets us send 6 requests in parallel
+ * instead of one-by-one, while still respecting Dropbox rate limits.
+ */
+async function runParallel<T>(
+    tasks: (() => Promise<T>)[],
+    concurrency = 6
+): Promise<T[]> {
+    const results: T[] = [];
+    let index = 0;
+    async function worker(): Promise<void> {
+        while (index < tasks.length) {
+            const i = index++;
+            results[i] = await tasks[i]();
+        }
+    }
+    const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, worker);
+    await Promise.all(workers);
+    return results;
+}
 
 interface DropboxTokenResponse {
     refresh_token?: string;
@@ -30,6 +63,8 @@ interface DropboxTokenResponse {
 // ---------------------------------------------------------------------------
 // Auth helpers
 // ---------------------------------------------------------------------------
+
+const CLIENT_ID = import.meta.env.VITE_DROPBOX_APP_KEY as string;
 
 function getDbxAuth(): DropboxAuth | null {
     if (!dbxAuth) {
@@ -144,6 +179,14 @@ let lastAuthCheck = 0;
 const AUTH_CHECK_TTL = 600000; // 10 minutes
 
 export async function syncNotesWithDrive(background = false) {
+    // Never sync with stale data when the vault has not yet been unlocked.
+    // The in-memory Dexie cache may be from a previous session and uploading
+    // it would overwrite newer notes on Dropbox or on the vault disk.
+    if (_vaultIsLocked) {
+        console.log('Sync skipped: vault is locked.');
+        return;
+    }
+
     const isAuthorized = await authorizeDropbox();
     if (!isAuthorized) {
         if (background) return;
@@ -217,7 +260,7 @@ export async function syncNotesWithDrive(background = false) {
                 // Check if we should warn the user: are there many local files that match cloud paths
                 // but have suspicious timestamps (e.g., all recently modified)?
                 const pathMatches = localItems.filter(li => {
-                    const parentPath = getFullPath(li.id!, localItems);
+                    const parentPath = getItemPath(li.parentId, localItems);
                     const fullPath = parentPath ? `${parentPath}/${li.title}` : li.title;
                     return remotePathMap.has(fullPath);
                 });
@@ -229,7 +272,7 @@ export async function syncNotesWithDrive(background = false) {
 
                         if (storageMode === 'vault' && localItem.type === 'note') {
                             try {
-                                const parentPath = getFullPath(localItem.parentId, localItems);
+                                const parentPath = getItemPath(localItem.parentId, localItems);
                                 const path = notePathFromTitle(localItem.title, parentPath);
                                 await deleteFromVault(path);
                             } catch (e) {
@@ -257,7 +300,7 @@ export async function syncNotesWithDrive(background = false) {
                 const remoteMeta = remoteManifest.items[localItem.id];
                 if (remoteMeta) {
                     // It's an ID collision. Check if it's the SAME note by path.
-                    const parentPath = getFullPath(localItem.id, localItems);
+                    const parentPath = getItemPath(localItem.parentId, localItems);
                     const localPath = parentPath ? `${parentPath}/${localItem.title}` : localItem.title;
                     const remotePath = remoteMeta.parentPath ? `${remoteMeta.parentPath}/${remoteMeta.title}` : remoteMeta.title;
 
@@ -296,7 +339,7 @@ export async function syncNotesWithDrive(background = false) {
             // they might be "ghosts" from an old vault. Ask user to decide.
             const localOnlyItems = localItems.filter(li => {
                 if (li.id === undefined || li.isDeleted || dedupedIds.has(li.id)) return false;
-                const parentPath = getFullPath(li.id, localItems);
+                const parentPath = getItemPath(li.parentId, localItems);
                 const fullPath = parentPath ? `${parentPath}/${li.title}` : li.title;
                 return !remotePathMap.has(fullPath);
             });
@@ -309,7 +352,7 @@ export async function syncNotesWithDrive(background = false) {
 
                     if (storageMode === 'vault' && item.type === 'note') {
                         try {
-                            const parentPath = getFullPath(item.parentId, localItems);
+                            const parentPath = getItemPath(item.parentId, localItems);
                             const path = notePathFromTitle(item.title, parentPath);
                             await deleteFromVault(path);
                         } catch (e) {
@@ -370,7 +413,7 @@ export async function syncNotesWithDrive(background = false) {
                 // an old file (e.g. Android scoped storage deletion bug), it will hit this block
                 // with a new ID and a fresh OS timestamp. We kill it here.
                 if (!remoteMeta && !localItem.isDeleted) {
-                    const parentPath = getFullPath(localItem.id, localItems);
+                    const parentPath = getItemPath(localItem.parentId, localItems);
                     const fullPath = parentPath ? `${parentPath}/${localItem.title}` : localItem.title;
                     if (remotePathMap.has(fullPath)) {
                         console.warn(`Sync: Destroying path collision ghost "${fullPath}" (Local ID: ${localItem.id}). Cloud version strictly wins.`);
@@ -393,8 +436,9 @@ export async function syncNotesWithDrive(background = false) {
 
         console.log(`Sync: ${toDownload.length} to download, ${toUpload.length} to upload.`);
 
-        // Downloads - Sequential to prevent half-synced state on partial failure
-        for (const id of toDownload) {
+        // Downloads - Parallelised with concurrency limit to prevent half-synced
+        // state on partial failure while still being fast on mobile.
+        const downloadTasks = toDownload.map(id => async () => {
             try {
                 const isRemoteDeleted = remoteManifest.items[id]?.isDeleted;
                 const existingLocal = localMap.get(id);
@@ -405,7 +449,7 @@ export async function syncNotesWithDrive(background = false) {
                     await db.contents.delete(id);
                     if (storageMode === 'vault') {
                         try {
-                            const parentPath = getFullPath(existingLocal.parentId, localItems);
+                            const parentPath = getItemPath(existingLocal.parentId, localItems);
                             const path = notePathFromTitle(existingLocal.title, parentPath);
                             await deleteFromVault(path);
                         } catch { /* best‑effort */ }
@@ -418,11 +462,12 @@ export async function syncNotesWithDrive(background = false) {
                         // --- VALIDATION: never overwrite with corrupt data ---
                         if (!item || typeof item.id !== 'number' || !item.title || !item.type) {
                             console.error(`Sync: skipping corrupt download for id ${id}`, item);
-                            continue;
+                            return;
                         }
 
                         await db.items.put(item);
                         if (item.type === 'note' && !item.isDeleted) {
+                            // Download item + content in parallel
                             const contentBlob = await downloadAppFile(`/contents/${id}.json`);
                             if (contentBlob) {
                                 const contentData = JSON.parse(await contentBlob.text());
@@ -430,17 +475,17 @@ export async function syncNotesWithDrive(background = false) {
                                 // Validate content data
                                 if (!contentData || typeof contentData.id !== 'number') {
                                     console.error(`Sync: skipping corrupt content for id ${id}`);
-                                    continue;
+                                    return;
                                 }
 
                                 await db.contents.put(contentData);
                                 if (storageMode === 'vault') {
                                     try {
-                                        const parentPath = getFullPath(item.id!, await db.items.toArray());
+                                        const parentPath = getItemPath(item.parentId, await db.items.toArray());
                                         const path = notePathFromTitle(item.title, parentPath);
 
                                         if (existingLocal && existingLocal.type === 'note') {
-                                            const oldParentPath = getFullPath(existingLocal.parentId, localItems);
+                                            const oldParentPath = getItemPath(existingLocal.parentId, localItems);
                                             const oldPath = notePathFromTitle(existingLocal.title, oldParentPath);
                                             if (oldPath !== path) {
                                                 await deleteFromVault(oldPath).catch(console.warn);
@@ -458,10 +503,12 @@ export async function syncNotesWithDrive(background = false) {
                 console.error(`Sync: download failed for id ${id}, skipping`, e);
                 // Continue with remaining downloads instead of aborting the entire sync
             }
-        }
+        });
+        await runParallel(downloadTasks);
 
-        // Uploads - Sequential to avoid 429 "too many write operations"
-        for (const item of toUpload) {
+        // Uploads - Parallelised with concurrency limit.
+        // Each note has 2 files (item + content), so we batch them as one task.
+        const uploadTasks = toUpload.map(item => async () => {
             await uploadAppFile(`/items/${item.id}.json`, JSON.stringify(item));
             if (item.type === 'note' && !item.isDeleted) {
                 const content = await db.contents.get(item.id!);
@@ -473,20 +520,51 @@ export async function syncNotesWithDrive(background = false) {
                 updated_at: item.updated_at,
                 isDeleted: !!item.isDeleted,
                 title: item.title,
-                parentPath: getFullPath(item.id!, localItems),
+                parentPath: getItemPath(item.parentId, localItems),
             };
-        }
+        });
+        await runParallel(uploadTasks);
 
         if (toUpload.length > 0 || toDownload.length > 0) {
             remoteManifest.lastUpdated = Date.now();
             await uploadAppFile('/manifest.json', JSON.stringify(remoteManifest));
         }
 
+        // --- PHYSICAL VAULT RECONCILIATION ---
+        // Guarantee that the disk matches the sidebar after sync updates.
+        // Optimization: if we have specific downloads/uploads, perform incremental reconciliation.
+        if (storageMode === 'vault') {
+            try {
+                const { reconcileVault } = await import('./vault');
+                const { getItemPath } = await import('./db');
+                // MUST fetch fresh state here, since `localItems` was fetched before the sync changes!
+                const freshAllItems = await db.items.toArray();
+                const freshAllContents = await db.contents.toArray();
+                
+                // If it's a small update, only reconcile the affected items
+                const affectedIds = (toDownload.length + toUpload.length < 50) 
+                    ? [...toDownload, ...toUpload.map(i => i.id!)]
+                    : undefined;
+
+                await reconcileVault(freshAllItems, freshAllContents, getItemPath, affectedIds);
+            } catch (e) {
+                console.error('Failed to reconcile vault after sync', e);
+            }
+        }
+
         lastSyncTime = Date.now();
         localStorage.setItem('keim_last_sync', lastSyncTime.toString());
         console.log('Dropbox Sync complete!');
         broadcastSyncStatus('synced');
-        // Tell the UI that content may have changed
+        
+        // Notify other tabs to refresh their UI
+        syncChannel.postMessage({ 
+            type: 'sync_complete', 
+            downloadedIds: toDownload,
+            timestamp: lastSyncTime
+        });
+
+        // Tell the local UI that content may have changed
         if (toDownload.length > 0) {
             window.dispatchEvent(new CustomEvent('keim_sync_complete', { detail: { downloadedIds: toDownload } }));
         }
@@ -610,7 +688,7 @@ export function triggerAutoSync() {
             return;
         }
         executeSync();
-    }, 5000); // Back to a safer 5 seconds
+    }, 2000); // 2s debounce — fast enough to feel real-time, safe enough to batch rapid edits
 }
 
 let initSyncDone = false;
@@ -622,7 +700,7 @@ export function initSync() {
 
     // 1. Poll every 5 minutes (300,000ms)
     setInterval(async () => {
-        if (isDriveConnected()) {
+        if (isDriveConnected() && !_vaultIsLocked) {
             if (isSyncing) {
                 syncQueued = true;
             } else {
@@ -635,7 +713,7 @@ export function initSync() {
     // Guard: ignore visibility events within 3s of startup — some browsers fire
     // visibilitychange on initial load which would cause a duplicate startup sync.
     document.addEventListener('visibilitychange', async () => {
-        if (document.visibilityState === 'visible' && isDriveConnected() && Date.now() - startedAt > 3000) {
+        if (document.visibilityState === 'visible' && isDriveConnected() && !_vaultIsLocked && Date.now() - startedAt > 3000) {
             if (isSyncing) {
                 syncQueued = true;
             } else {

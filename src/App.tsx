@@ -1,19 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Editor from './components/Editor';
-import { db, addItem, getFullPath } from './lib/db';
-import { PanelLeft, HardDrive } from 'lucide-react';
+import { db, addItem, getFullPath, getItemPath } from './lib/db';
+import { PanelLeft, HardDrive, FileText } from 'lucide-react';
 import SettingsModal from './components/SettingsModal';
 import WelcomeScreen from './components/WelcomeScreen';
-import { authorizeDropbox, syncNotesWithDrive, isDriveConnected, initSync, disconnectDropbox } from './lib/sync';
+import { authorizeDropbox, syncNotesWithDrive, isDriveConnected, initSync, disconnectDropbox, setVaultLocked } from './lib/sync';
 import {
   getStorageMode, setStorageMode,
-  openVaultPicker, restoreVaultHandle, getVaultName,
+  openVaultPicker, restoreVaultHandle,
   readVaultTree, readNoteContent, hasSavedVault
 } from './lib/vault';
 import { CommandPalette } from './components/CommandPalette';
 import { buildSearchIndex } from './lib/search';
 import MobileDock from './components/MobileDock';
+import CloudSyncPrompt from './components/CloudSyncPrompt';
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'disconnected';
 
@@ -35,6 +36,7 @@ function App() {
     return localStorage.getItem('keim_sidebar_open') === 'true';
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'general' | 'sync' | 'appearance'>('general');
 
   useEffect(() => {
     if (selectedNoteId !== null) {
@@ -82,9 +84,8 @@ function App() {
   const [appState, setAppState] = useState<AppState>('loading');
   const [isPickingVault, setIsPickingVault] = useState(false);
   const [isVaultLocked, setIsVaultLocked] = useState(false);
-  const [vaultName, setVaultName] = useState<string>('');
   // Sidebar key forces re-render when vault loads new notes
-  const [sidebarKey, setSidebarKey] = useState(0);
+  
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('disconnected');
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(() => {
     return Number(localStorage.getItem('keim_last_sync')) || null;
@@ -119,6 +120,10 @@ function App() {
     });
   };
 
+  // Keep sync module informed about vault lock state so it never uploads stale
+  // Dexie data while the vault permission has not been re-granted on Android.
+  useEffect(() => { setVaultLocked(isVaultLocked); }, [isVaultLocked]);
+
   useEffect(() => {
     applyTheme(theme);
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
@@ -126,6 +131,21 @@ function App() {
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
   }, [theme]);
+
+  // --- Cross-tab Sync Synchronization ---
+  useEffect(() => {
+    const channel = new BroadcastChannel('keim_sync');
+    const handler = (event: MessageEvent) => {
+      const { type, status, timestamp } = event.data;
+      if (type === 'sync_status') {
+        setSyncStatus(status);
+      } else if (type === 'sync_complete') {
+        if (timestamp) setLastSyncTime(timestamp);
+      }
+    };
+    channel.addEventListener('message', handler);
+    return () => channel.close();
+  }, []);
 
   // --- Load Vault Tree into IndexedDB mirror ---
   const loadVaultIntoDb = useCallback(async () => {
@@ -140,7 +160,11 @@ function App() {
     // Helper to resolve an item's full vault path from Dexie parentIds
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const buildPath = (item: any): string => {
-      const parentPath = getFullPath(item.parentId, existingItems);
+      const parentPath = getItemPath(item.parentId, existingItems);
+      if (item.type === 'note') {
+        const safeName = item.title.replace(/[<>:"/\\|?*]/g, '_') + '.md';
+        return parentPath ? `${parentPath}/${safeName}` : safeName;
+      }
       return parentPath ? `${parentPath}/${item.title}` : item.title;
     };
 
@@ -234,6 +258,17 @@ function App() {
       }
     }
 
+    // --- PHYSICAL VAULT RECONCILIATION ---
+    // Enforce DB state on disk (Source of Truth) to fix any inconsistencies
+    try {
+        const { reconcileVault } = await import('./lib/vault');
+        const allItems = await db.items.toArray();
+        const allContents = await db.contents.toArray();
+        await reconcileVault(allItems, allContents, getItemPath);
+    } catch (e) {
+        console.error('Failed to reconcile vault after load:', e);
+    }
+
     // Attempt to restore selected note ID from path
     const storedPath = selectedNotePathRef.current;
     if (storedPath) {
@@ -287,14 +322,13 @@ function App() {
         const handle = await restoreVaultHandle(false);
         if (handle) {
           await loadVaultIntoDb();
-          setVaultName(getVaultName());
           setAppState('ready');
-          setSidebarKey(k => k + 1);
+          
         } else {
           // Silent restore failed — enter app in read-only / locked mode
           setIsVaultLocked(true);
           setAppState('ready');
-          setSidebarKey(k => k + 1);
+          
         }
         return;
       }
@@ -333,7 +367,8 @@ function App() {
     authorizeDropbox().then(async (connected) => {
       setSyncStatus(connected ? 'idle' : 'disconnected');
       if (connected) {
-        // Small delay so the UI is fully mounted before we start syncing
+        // Small delay so the UI is fully mounted before we start syncing.
+        // Also skip if vault is locked — we must not upload stale Dexie data.
         await new Promise(r => setTimeout(r, 1000));
         try {
           await syncNotesWithDrive(true /* background */);
@@ -367,6 +402,28 @@ function App() {
     }
   }, []);
 
+  // --- Keyboard Shortcuts ---
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // New Shortcuts: Alt + N, Alt + F, Alt + S
+      // Use e.code instead of e.key on Mac to avoid Alt character composition issues
+      if (e.altKey) {
+        if (e.code === 'KeyN') {
+          e.preventDefault();
+          handleAddNote(0);
+        } else if (e.code === 'KeyF') {
+          e.preventDefault();
+          handleAddFolder(0);
+        } else if (e.code === 'KeyS') {
+          e.preventDefault();
+          doSync();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [doSync]);
+
   // --- Seed IndexedDB (for browser storage mode) ---
   async function seedIndexedDb() {
     const count = await db.items.count();
@@ -396,6 +453,21 @@ function App() {
   const handleAddNote = async (parentId = 0) => {
     const id = await addItem({ parentId, type: 'note', title: 'New Note' }, '');
     localStorage.setItem('keim_has_user_edits', 'true');
+
+    // Immediately write to vault so it survives a page refresh
+    if (getStorageMode() === 'vault') {
+      try {
+        const { writeNoteToVault, notePathFromTitle } = await import('./lib/vault');
+        const { getItemPath } = await import('./lib/db');
+        const allItems = await db.items.toArray();
+        const parentPath = getItemPath(parentId, allItems);
+        const notePath = notePathFromTitle('New Note', parentPath);
+        await writeNoteToVault(notePath, '');
+      } catch (e) {
+        console.warn('Could not write new note to vault immediately', e);
+      }
+    }
+
     setSelectedNoteId(id as number);
     if (window.innerWidth < 768) setIsSidebarOpen(false);
 
@@ -408,6 +480,21 @@ function App() {
   const handleAddFolder = async (parentId = 0) => {
     const id = await addItem({ parentId, type: 'folder', title: 'New Folder' }, '');
     localStorage.setItem('keim_has_user_edits', 'true');
+
+    // Immediately create the folder in the vault so it survives a page refresh
+    if (getStorageMode() === 'vault') {
+      try {
+        const { createFolderInVault } = await import('./lib/vault');
+        const { getItemPath } = await import('./lib/db');
+        const allItems = await db.items.toArray();
+        const parentPath = getItemPath(parentId, allItems);
+        const folderPath = parentPath ? `${parentPath}/New Folder` : 'New Folder';
+        await createFolderInVault(folderPath);
+      } catch (e) {
+        console.warn('Could not create folder in vault immediately', e);
+      }
+    }
+
     if (window.innerWidth < 768) setIsSidebarOpen(true);
 
     // Rename node
@@ -423,8 +510,7 @@ function App() {
     if (handle) {
       setIsVaultLocked(false);
       await loadVaultIntoDb();
-      setVaultName(getVaultName());
-      setSidebarKey(k => k + 1);
+      
       // Kick off background sync now that we have access
       syncNotesWithDrive(true).catch(console.warn);
       return true;
@@ -446,7 +532,7 @@ function App() {
               "You have existing browser notes. Do you want to copy them into your new Vault folder?\n\nClick OK to Merge, or Cancel to start fresh."
             );
             if (wantsMerge) {
-              const { getFullPath } = await import('./lib/db');
+              const { getItemPath } = await import('./lib/db');
               const { notePathFromTitle } = await import('./lib/vault');
               const contents = await db.contents.toArray();
               const items = await db.items.toArray();
@@ -455,7 +541,7 @@ function App() {
               for (const item of items) {
                 if (item.type === 'note' && !item.isDeleted) {
                   const content = contentMap.get(item.id!) || '';
-                  const parentPath = getFullPath(item.id!, items);
+                  const parentPath = getItemPath(item.parentId, items);
                   const path = notePathFromTitle(item.title, parentPath);
                   // Write directly to the picked handle
                   const parts = path.split('/');
@@ -476,9 +562,8 @@ function App() {
         // -----------------------
 
         await loadVaultIntoDb();
-        setVaultName(getVaultName());
         setAppState('ready');
-        setSidebarKey(k => k + 1);
+        
       }
     } finally {
       setIsPickingVault(false);
@@ -489,7 +574,7 @@ function App() {
     setStorageMode('indexeddb');
     await seedIndexedDb();
     setAppState('ready');
-    setSidebarKey(k => k + 1);
+    
   };
 
   // --- Render States ---
@@ -538,9 +623,7 @@ function App() {
             if (handle) {
               setAppState('restore-vault'); // show spinner during load
               await loadVaultIntoDb();
-              setVaultName(getVaultName());
               setAppState('ready');
-              setSidebarKey(k => k + 1);
             }
           }}
           className="px-6 py-3 rounded-lg text-sm font-semibold text-white bg-indigo-500 hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-500/25"
@@ -564,7 +647,6 @@ function App() {
   return (
     <div className="flex h-screen w-full overflow-hidden relative">
       <Sidebar
-        key={sidebarKey}
         selectedNoteId={selectedNoteId}
         onSelectNote={(id: number) => {
           setSelectedNoteId(id);
@@ -573,10 +655,10 @@ function App() {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         onOpenSettings={() => {
+          setSettingsTab('general');
           setIsSidebarOpen(false);
           setIsSettingsOpen(true);
         }}
-        vaultName={vaultName}
         storageMode={storageMode}
         syncStatus={syncStatus}
         lastSyncTime={lastSyncTime}
@@ -585,11 +667,15 @@ function App() {
         onAddFolder={handleAddFolder}
         isVaultLocked={isVaultLocked}
         onUnlockVault={handleUnlockVault}
+        onDeleteItem={(id) => {
+          if (id === selectedNoteId) setSelectedNoteId(null);
+        }}
       />
 
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        initialTab={settingsTab}
         theme={theme}
         setTheme={setTheme}
         onChangeVault={handlePickVault}
@@ -604,6 +690,16 @@ function App() {
           onSelectNote={(id) => {
             setSelectedNoteId(id);
             if (window.innerWidth < 768) setIsSidebarOpen(false);
+          }}
+        />
+      )}
+
+      {/* Render Cloud Sync Prompt */}
+      {appState === 'ready' && syncStatus === 'disconnected' && (
+        <CloudSyncPrompt
+          onConnect={() => {
+            setSettingsTab('sync');
+            setIsSettingsOpen(true);
           }}
         />
       )}
@@ -638,8 +734,17 @@ function App() {
               onUnlockVault={handleUnlockVault}
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-dark-bg/50 dark:text-light-bg/50 p-6 text-center">
-              <p>Select a note from the sidebar or create a new one.</p>
+            <div className="flex h-full flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in duration-500">
+              <div className="w-24 h-24 mb-8 text-dark-bg/5 dark:text-light-bg/5 relative">
+                <FileText size={96} strokeWidth={1} className="absolute inset-0" />
+                <div className="absolute inset-x-0 bottom-0 top-1/2 bg-gradient-to-t from-light-bg dark:from-dark-bg to-transparent" />
+              </div>
+              <div className="space-y-2 max-w-sm">
+                <h3 className="text-xl font-bold text-dark-bg dark:text-light-bg tracking-tight">Focus on your ideas</h3>
+                <p className="text-dark-bg/40 dark:text-light-bg/40 text-sm leading-relaxed">
+                  Select a note from the sidebar or press <kbd className="font-sans px-1.5 py-0.5 bg-dark-bg/5 dark:bg-light-bg/5 border border-dark-bg/10 dark:border-light-bg/10 rounded-md text-xs font-bold">Alt + N</kbd> to start something new.
+                </p>
+              </div>
             </div>
           )}
         </div>

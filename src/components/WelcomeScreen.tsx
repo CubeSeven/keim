@@ -28,8 +28,8 @@ export default function WelcomeScreen({ onPickVault, onUseBrowserStorage, isPick
 
                 {/* Storage Options */}
                 <div className="flex flex-col gap-3 w-full">
-                    {/* Option A: Vault Folder */}
-                    {fsSupported ? (
+                    {/* Option A: Vault Folder (Desktop Only) */}
+                    {fsSupported && (
                         <button
                             onClick={onPickVault}
                             disabled={isPickingVault}
@@ -56,18 +56,6 @@ export default function WelcomeScreen({ onPickVault, onUseBrowserStorage, isPick
                             </div>
                             <ArrowRight size={18} className="text-dark-bg/30 dark:text-light-bg/30 group-hover:text-indigo-500 transition-colors mt-1 shrink-0" />
                         </button>
-                    ) : (
-                        <div className="flex items-start gap-4 p-5 rounded-xl border-2 border-dark-bg/10 dark:border-light-bg/10 bg-dark-bg/5 dark:bg-light-bg/5 opacity-50 cursor-not-allowed text-left w-full">
-                            <div className="mt-0.5 text-dark-bg/40 dark:text-light-bg/40 shrink-0">
-                                <FolderOpen size={24} />
-                            </div>
-                            <div>
-                                <span className="font-semibold text-dark-bg dark:text-light-bg">Open Vault Folder</span>
-                                <p className="text-dark-bg/50 dark:text-light-bg/50 text-sm mt-1">
-                                    Not supported in your browser. Try Chrome or Edge for this feature.
-                                </p>
-                            </div>
-                        </div>
                     )}
 
                     {/* Option B: Browser Storage */}
@@ -79,11 +67,18 @@ export default function WelcomeScreen({ onPickVault, onUseBrowserStorage, isPick
                             <Database size={24} />
                         </div>
                         <div className="flex-1">
-                            <span className="font-semibold text-dark-bg dark:text-light-bg">
-                                Use Browser Storage
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="font-semibold text-dark-bg dark:text-light-bg">
+                                    Browser Storage
+                                </span>
+                                {!fsSupported && (
+                                    <span className="text-xs bg-indigo-500 text-white px-2 py-0.5 rounded-full">
+                                        Recommended
+                                    </span>
+                                )}
+                            </div>
                             <p className="text-dark-bg/60 dark:text-light-bg/60 text-sm mt-1">
-                                Notes are stored privately in your browser. Works everywhere, no folder needed. Add Dropbox sync later from Settings.
+                                Notes are stored privately in your browser. Highly recommended to enable <strong>Cloud Sync</strong> after setup to prevent data loss.
                             </p>
                         </div>
                         <ArrowRight size={18} className="text-dark-bg/30 dark:text-light-bg/30 group-hover:text-dark-bg/60 dark:group-hover:text-light-bg/60 transition-colors mt-1 shrink-0" />

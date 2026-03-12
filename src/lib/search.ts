@@ -1,5 +1,5 @@
 import MiniSearch from 'minisearch';
-import { db } from './db';
+import { db, getFullPath } from './db';
 
 // Define what a documented returned from search looks like
 export interface SearchResult {
@@ -16,7 +16,7 @@ export interface SearchResult {
 // We return the title so we can display it right away in the UI.
 export const miniSearch = new MiniSearch({
     fields: ['title', 'content', 'tags'], // fields to index for full-text search
-    storeFields: ['title', 'parentId'], // fields to return with search results
+    storeFields: ['title', 'parentId', 'fullPath', 'icon'], // fields to return with search results
     searchOptions: {
         boost: { title: 2, tags: 1.5 }, // Title matches are ranked higher, then tags, then content
         fuzzy: 0.2, // Allow typos (e.g. 1 mistake per 5 chars)
@@ -44,13 +44,18 @@ export async function buildSearchIndex() {
     const contentMap = new Map(contents.map(c => [c.id, c.content]));
 
     // 4. Combine them into documents for MiniSearch
-    const documents = notes.map(note => ({
-        id: note.id,
-        title: note.title,
-        content: contentMap.get(note.id!) || '',
-        tags: note.tags?.join(' ') || '',
-        parentId: note.parentId
-    }));
+    const documents = notes.map(note => {
+        const parentPath = getFullPath(note.id!, notes);
+        return {
+            id: note.id,
+            title: note.title,
+            content: contentMap.get(note.id!) || '',
+            tags: note.tags?.join(' ') || '',
+            parentId: note.parentId,
+            fullPath: parentPath || 'Root',
+            icon: note.icon
+        };
+    });
 
     // 5. Index them!
     miniSearch.addAll(documents);
@@ -62,12 +67,13 @@ export async function buildSearchIndex() {
  * Update the search index for a single note.
  * Call this when a note is created, renamed, or modified.
  */
-export function updateSearchIndex(noteId: number, title: string, content: string, parentId: number, tags?: string[]) {
+export function updateSearchIndex(noteId: number, title: string, content: string, parentId: number, fullPath: string, icon?: string, tags?: string[]) {
     const tagsStr = tags?.join(' ') || '';
+    const doc = { id: noteId, title, content, parentId, fullPath, icon, tags: tagsStr };
     if (!miniSearch.has(noteId)) {
-        miniSearch.add({ id: noteId, title, content, parentId, tags: tagsStr });
+        miniSearch.add(doc);
     } else {
-        miniSearch.replace({ id: noteId, title, content, parentId, tags: tagsStr });
+        miniSearch.replace(doc);
     }
 }
 

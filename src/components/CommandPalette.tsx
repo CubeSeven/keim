@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { Command } from 'cmdk';
 import { Search, FileText, Folder } from 'lucide-react';
 import { miniSearch, type SearchResult } from '../lib/search';
-import { db, getFullPath } from '../lib/db';
 
 interface CommandPaletteProps {
     onSelectNote: (id: number) => void;
@@ -16,7 +15,7 @@ export function CommandPalette({ onSelectNote }: CommandPaletteProps) {
     // Toggle the menu when ⌘K is pressed
     useEffect(() => {
         const down = (e: KeyboardEvent) => {
-            if (e.key === 'k' && e.ctrlKey) {
+            if (e.code === 'KeyK' && e.altKey) {
                 e.preventDefault();
                 setOpen((open) => !open);
             }
@@ -43,25 +42,15 @@ export function CommandPalette({ onSelectNote }: CommandPaletteProps) {
                     prefix: true, // partial matching
                 }) as unknown as SearchResult[];
 
-                // 2. Hydrate with paths (take top 15 results for snappiness)
-                const topResults = rawResults.slice(0, 15);
-                if (topResults.length === 0) {
-                    setResults([]);
-                    return;
-                }
+                // 2. Hydrate results (MiniSearch now stores path/icon for us)
+                const hydratedResults = rawResults.slice(0, 15).map(res => ({
+                    ...res,
+                    fullPath: (res as any).fullPath || 'Root',
+                    icon: (res as any).icon,
+                    tags: (res as any).tags?.split(' ') || []
+                }));
 
-                const allItems = await db.items.toArray();
-                const hydratedResults = topResults.map(res => {
-                    const originalItem = allItems.find(i => i.id === res.id);
-                    return {
-                        ...res,
-                        icon: originalItem?.icon,
-                        tags: originalItem?.tags,
-                        fullPath: getFullPath(res.id, allItems) || 'Root'
-                    };
-                });
-
-                setResults(hydratedResults);
+                setResults(hydratedResults as any);
             } catch (e) {
                 console.error("Search failed:", e);
             }
@@ -133,7 +122,7 @@ export function CommandPalette({ onSelectNote }: CommandPaletteProps) {
                                     </div>
                                     <div className="flex items-center flex-wrap text-xs text-dark-bg/50 dark:text-light-bg/50 aria-selected:text-indigo-500/70 dark:aria-selected:text-indigo-400/70 pl-6 gap-2">
                                         <div className="flex items-center">
-                                            <Folder className="mr-1.5 h-3 w-3 opacity-50 flex-shrink-0" />
+                                            <Folder className="mr-1.5 h-3.5 w-3.5 opacity-50 flex-shrink-0" />
                                             <span className="truncate">{result.fullPath}</span>
                                         </div>
                                         {result.tags && result.tags.length > 0 && (

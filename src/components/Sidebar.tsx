@@ -15,7 +15,6 @@ interface SidebarProps {
     isOpen: boolean;
     onClose: () => void;
     onOpenSettings: () => void;
-    vaultName?: string;
     storageMode?: 'vault' | 'indexeddb' | 'unset';
     syncStatus: SyncStatus;
     lastSyncTime: number | null;
@@ -24,12 +23,13 @@ interface SidebarProps {
     onAddFolder?: (parentId: number) => void;
     isVaultLocked?: boolean;
     onUnlockVault?: () => void;
+    onDeleteItem?: (id: number) => void;
 }
 
 export default function Sidebar({
     selectedNoteId, onSelectNote, isOpen, onClose, onOpenSettings,
-    vaultName, storageMode, syncStatus, lastSyncTime, onSync, onAddNote, onAddFolder,
-    isVaultLocked, onUnlockVault
+    storageMode, syncStatus, lastSyncTime, onSync, onAddNote, onAddFolder,
+    isVaultLocked, onUnlockVault, onDeleteItem
 }: SidebarProps) {
     const items = useLiveQuery(() => db.items.filter(item => !item.isDeleted).toArray());
 
@@ -132,7 +132,7 @@ export default function Sidebar({
             >
                 <div className="flex flex-col h-full">
                     <div
-                        className="p-4 flex items-center justify-end border-b border-light-bg dark:border-dark-bg shrink-0"
+                        className="p-4 flex items-center justify-end shrink-0"
                         style={{
                             paddingTop: 'calc(1rem + var(--spacing-safe-top, 0px))',
                             paddingLeft: 'calc(1rem + var(--spacing-safe-left, 0px))'
@@ -142,10 +142,10 @@ export default function Sidebar({
                             <button
                                 onClick={() => {
                                     // Manually dispatch the keydown event to trigger cmdk
-                                    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+                                    document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyK', altKey: true }));
                                 }}
                                 className={headerIconBtnClass}
-                                title="Search Notes (Ctrl+K)"
+                                title="Search Notes (Alt+K)"
                             >
                                 <Search size={16} />
                             </button>
@@ -178,9 +178,30 @@ export default function Sidebar({
                             e.preventDefault();
                             const draggedId = parseInt(e.dataTransfer.getData('text/plain'), 10);
                             if (Number.isNaN(draggedId)) return;
-                            const { updateItem, db: appDb } = await import('../lib/db');
+                            const { updateItem, db: appDb, getItemPath } = await import('../lib/db');
+                            const { getStorageMode, deleteFromVault, notePathFromTitle, writeNoteToVault } = await import('../lib/vault');
 
                             const allItems = await appDb.items.toArray();
+                            
+                            // ── Physical Vault File Move ──
+                            const oldNote = allItems.find(i => i.id === draggedId);
+                            if (oldNote && oldNote.parentId !== 0 && getStorageMode() === 'vault') {
+                                if (oldNote.type === 'note') {
+                                    const oldParentPath = getItemPath(oldNote.parentId, allItems);
+                                    const oldPath = notePathFromTitle(oldNote.title, oldParentPath);
+                                    const newPath = notePathFromTitle(oldNote.title, ''); // Root has empty parentPath
+                                    if (oldPath !== newPath) {
+                                        try {
+                                            const contentObj = await appDb.contents.get(draggedId);
+                                            await deleteFromVault(oldPath);
+                                            await writeNoteToVault(newPath, contentObj?.content || '');
+                                        } catch (err) {
+                                            console.warn('Physical move in vault failed during root drop', err);
+                                        }
+                                    }
+                                }
+                            }
+
                             const roots = allItems.filter(i => i.parentId === 0 && !i.isDeleted && i.id !== draggedId);
                             roots.sort((a, b) => {
                                 const orderA = a.order ?? a.updated_at ?? 0;
@@ -193,6 +214,7 @@ export default function Sidebar({
                             }
 
                             await updateItem(draggedId, { parentId: 0, order: newOrder });
+                            triggerAutoSync();
                         }}
                     >
                         {tree.map(node => (
@@ -204,12 +226,13 @@ export default function Sidebar({
                                 level={0}
                                 onAddNote={onAddNote}
                                 onAddFolder={onAddFolder}
+                                onDeleteItem={onDeleteItem}
                             />
                         ))}
 
                         {/* --- Tags Archive Section --- */}
                         {uniqueTags.length > 0 && (
-                            <div className="mt-4 border-t border-light-bg dark:border-dark-bg pt-2">
+                            <div className="mt-4 pt-2">
                                 <div
                                     className="flex items-center justify-between px-4 py-1.5 cursor-pointer hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 text-dark-bg/70 dark:text-light-bg/70 transition-colors select-none"
                                     onClick={() => setIsTagsOpen(!isTagsOpen)}
@@ -261,13 +284,13 @@ export default function Sidebar({
 
                     {/* Bottom Status Bar */}
                     <div
-                        className="p-2 border-t border-light-bg dark:border-dark-bg shrink-0 flex items-center justify-between"
+                        className="p-2 shrink-0 flex items-center justify-between"
                         style={{
                             paddingBottom: 'calc(0.5rem + var(--spacing-safe-bottom, 0px))',
                             paddingLeft: 'calc(0.5rem + var(--spacing-safe-left, 0px))'
                         }}
                     >
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-2">
                             {/* Settings Icon-only button */}
                             <button
                                 onClick={onOpenSettings}
@@ -276,14 +299,6 @@ export default function Sidebar({
                             >
                                 <Settings size={16} className="opacity-70" />
                             </button>
-                            <div className="flex-1 min-w-0">
-                                <h1 className="text-sm font-bold text-dark-bg dark:text-light-bg truncate leading-none">
-                                    {vaultName || 'My Notes'}
-                                </h1>
-                                <p className="text-[10px] text-dark-bg/40 dark:text-light-bg/40 font-medium uppercase tracking-wider mt-0.5">
-                                    {storageMode === 'vault' ? 'Local Vault' : 'Browser Storage'}
-                                </p>
-                            </div>
                             {/* Storage type icon */}
                             <div
                                 className="flex items-center justify-center p-1.5 rounded-md text-dark-bg/60 dark:text-light-bg/60"
@@ -327,9 +342,10 @@ interface TreeNodeProps {
     level: number;
     onAddNote?: (parentId: number) => void;
     onAddFolder?: (parentId: number) => void;
+    onDeleteItem?: (id: number) => void;
 }
 
-function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder }: TreeNodeProps) {
+function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder, onDeleteItem }: TreeNodeProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
@@ -371,10 +387,11 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder }:
 
     useEffect(() => {
         if (isRenaming && inputRef.current) {
+            setRenameValue(item.title);
             inputRef.current.focus();
             inputRef.current.select();
         }
-    }, [isRenaming]);
+    }, [isRenaming, item.title]);
 
     const paddingLeft = `${(level * 12) + 16}px`;
     const actionBtnClass = "hover:scale-110 p-1.5 md:p-0.5 rounded transition-transform opacity-100 md:opacity-70 hover:opacity-100 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5";
@@ -399,86 +416,105 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder }:
     const confirmDelete = async (e: React.MouseEvent) => {
         e.stopPropagation();
         setIsConfirmingDelete(false);
-        const { deleteItem, db: appDb, getFullPath } = await import('../lib/db');
+        const { deleteItem, db: appDb, getItemPath } = await import('../lib/db');
         const { removeFromSearchIndex } = await import('../lib/search');
 
+        // ── Step 1: Physical vault delete BEFORE soft-delete in Dexie ──────────
+        // We must resolve the vault path while the item is still present and
+        // non-deleted in the DB. On Android, also check QueryPermission first —
+        // if the vault is locked the delete silently succeeds in Dexie but we
+        // skip the disk op rather than throwing a confusing NotAllowedError.
+        const { getStorageMode, deleteFromVault, notePathFromTitle, getVaultHandle } = await import('../lib/vault');
+        if (getStorageMode() === 'vault') {
+            const allItems = await appDb.items.toArray();
+            const parentPath = getItemPath(item.parentId, allItems);
+            const vaultPath = item.type === 'note'
+                ? notePathFromTitle(item.title, parentPath)
+                : (parentPath ? `${parentPath}/${item.title}` : item.title);
+
+            const handle = getVaultHandle();
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const permission = handle ? await (handle as any).queryPermission({ mode: 'readwrite' }) : 'prompt';
+            if (permission === 'granted') {
+                try {
+                    await deleteFromVault(vaultPath);
+                } catch (err) {
+                    console.warn('Could not remove from vault (may already be deleted):', err);
+                }
+            } else {
+                // Vault is locked on Android — the .md file will be cleaned up
+                // automatically the next time the vault is unlocked and reloaded.
+                console.info(`Vault locked: skipping physical delete of "${vaultPath}". Will be removed on next vault access.`);
+            }
+        }
+
+        // ── Step 2: Soft-delete in Dexie (tombstone for cloud sync) ─────────────
         await deleteItem(item.id!);
         if (item.type === 'note') {
             await removeFromSearchIndex(item.id!);
         }
         localStorage.setItem('keim_has_user_edits', 'true');
 
-        // In vault mode, physically remove the file/folder from disk so it doesn't
-        // reappear on next vault reload. The soft-delete alone is not enough.
-        const { getStorageMode, deleteFromVault, notePathFromTitle } = await import('../lib/vault');
-        if (getStorageMode() === 'vault') {
-            const allItems = await appDb.items.toArray();
-            const parentPath = getFullPath(item.parentId, allItems);
-            const vaultPath = item.type === 'note'
-                ? notePathFromTitle(item.title, parentPath)
-                : (parentPath ? `${parentPath}/${item.title}` : item.title);
-            try {
-                await deleteFromVault(vaultPath);
-            } catch (err) {
-                console.warn('Could not remove from vault (may already be deleted):', err);
-            }
-        }
-
         // Push the deletion tombstone to Dropbox immediately
         triggerAutoSync();
+
+        onDeleteItem?.(item.id!);
     };
 
     const handleRenameSubmit = async () => {
         setIsRenaming(false);
         const newTitle = renameValue.trim();
         if (newTitle && newTitle !== item.title) {
-            const { updateItem, db, getFullPath } = await import('../lib/db');
+            const { updateItem, db, getItemPath } = await import('../lib/db');
             const { updateSearchIndex } = await import('../lib/search');
             const { triggerAutoSync } = await import('../lib/sync');
-            const { getStorageMode, deleteFromVault, notePathFromTitle, writeNoteToVault } = await import('../lib/vault');
+            const { getStorageMode, deleteFromVault, notePathFromTitle, writeNoteToVault, moveVaultFolder } = await import('../lib/vault');
 
             const allItems = await db.items.toArray();
-            const parentPath = getFullPath(item.parentId, allItems);
+            const parentPath = getItemPath(item.parentId, allItems);
 
-            // If vault mode, rename the file by reading old, deleting old, writing new
+            // 1. UPDATE DB FIRST. This ensures that any background sync triggered by
+            // this action, or any live query, reads the NEW title, preventing 
+            // "New Folder" from being resurrected by the reconciler.
+            await updateItem(item.id!, { title: newTitle, updated_at: Date.now() });
+
+            // 2. Update physical vault if enabled
             if (getStorageMode() === 'vault') {
-                const oldPath = notePathFromTitle(item.title, parentPath);
-                const newPath = notePathFromTitle(newTitle, parentPath);
-
                 try {
-                    let textContent = '';
                     if (item.type === 'note') {
+                        const oldPath = notePathFromTitle(item.title, parentPath);
+                        const newPath = notePathFromTitle(newTitle, parentPath);
+                        let textContent = '';
                         const contentObj = await db.contents.get(item.id!);
                         if (contentObj) textContent = contentObj.content;
-                    }
 
-                    if (item.type === 'note') {
                         await deleteFromVault(oldPath);
                         await writeNoteToVault(newPath, textContent);
-                    } else {
-                        // For folders, we'd need to rename the directory in the vault,
-                        // but File System Access API doesn't support direct rename.
-                        // Since folders contain children, a full recursive move is complex.
-                        // For now we just update DB. A true vault folder move requires
-                        // recursive copying which is out of scope for a simple rename fix.
-                        console.warn('Vault folder rename not fully supported by FS API yet');
+                    } else if (item.type === 'folder') {
+                        const oldFolderPath = getItemPath(item.id!, allItems); // Uses old title from allItems snapshot
+                        const newFolderPath = parentPath ? `${parentPath}/${newTitle}` : newTitle;
+                        
+                        const allContents = await db.contents.toArray();
+                        // Re-fetch allItems so moveVaultFolder has the new DB state, 
+                        // though it mostly uses it for building descendant paths
+                        const freshItems = await db.items.toArray(); 
+                        await moveVaultFolder(oldFolderPath, newFolderPath, freshItems, allContents, getItemPath);
                     }
                 } catch (e) {
                     console.error('Failed to rename in vault', e);
                 }
             }
 
-            // Update Database
-            await updateItem(item.id!, { title: newTitle, updated_at: Date.now() });
-
-            // Update Search Index if it's a note
+            // 3. Update Search Index
             if (item.type === 'note') {
                 const contentObj = await db.contents.get(item.id!);
                 if (contentObj) {
-                    updateSearchIndex(item.id!, newTitle, contentObj.content, item.parentId, item.tags);
+                    const newPath = getItemPath(item.parentId, await db.items.toArray());
+                    updateSearchIndex(item.id!, newTitle, contentObj.content, item.parentId, newPath, item.icon, item.tags);
                 }
             }
 
+            // 4. Trigger Sync
             localStorage.setItem('keim_has_user_edits', 'true');
             triggerAutoSync();
         } else {
@@ -600,12 +636,12 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder }:
 
         const oldNote = allItems.find(i => i.id === draggedId);
         if (oldNote && oldNote.parentId !== targetParentId) {
-            const { getStorageMode, deleteFromVault, notePathFromTitle, writeNoteToVault } = await import('../lib/vault');
-            const { getFullPath } = await import('../lib/db');
+            const { getStorageMode, deleteFromVault, notePathFromTitle, writeNoteToVault, moveVaultFolder } = await import('../lib/vault');
+            const { getItemPath } = await import('../lib/db');
             if (getStorageMode() === 'vault') {
                 if (oldNote.type === 'note') {
-                    const oldParentPath = getFullPath(oldNote.parentId, allItems);
-                    const newParentPath = getFullPath(targetParentId, allItems);
+                    const oldParentPath = getItemPath(oldNote.parentId, allItems);
+                    const newParentPath = getItemPath(targetParentId, allItems);
                     const oldPath = notePathFromTitle(oldNote.title, oldParentPath);
                     const newPath = notePathFromTitle(oldNote.title, newParentPath);
                     if (oldPath !== newPath) {
@@ -617,6 +653,20 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder }:
                             console.warn('Physical move in vault failed', err);
                         }
                     }
+                } else if (oldNote.type === 'folder') {
+                    const oldFolderPath = getItemPath(oldNote.id!, allItems);
+                    // Compute what new path WOULD be: target parent path + old folder title
+                    const targetParentPath = getItemPath(targetParentId, allItems);
+                    const newFolderPath = targetParentPath ? `${targetParentPath}/${oldNote.title}` : oldNote.title;
+                    
+                    if (oldFolderPath !== newFolderPath) {
+                        try {
+                            const allContents = await appDb.contents.toArray();
+                            await moveVaultFolder(oldFolderPath, newFolderPath, allItems, allContents, getItemPath);
+                        } catch (err) {
+                            console.warn('Physical folder move in vault failed', err);
+                        }
+                    }
                 }
             }
         }
@@ -625,6 +675,7 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder }:
             parentId: targetParentId,
             order: newOrder
         });
+        triggerAutoSync();
 
         if (dropKind === 'inside') setIsOpen(true);
     };
@@ -720,6 +771,7 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder }:
                         level={level + 1}
                         onAddNote={onAddNote}
                         onAddFolder={onAddFolder}
+                        onDeleteItem={onDeleteItem}
                     />
                     )}
                 </div>
@@ -758,25 +810,25 @@ function SyncStatusBadge({ status, lastSyncTime, onSync }: { status: SyncStatus,
         colorClass = 'text-amber-500';
         content = (
             <>
-                <AlertCircle size={14} />
-                <span className="text-[10px] font-medium tracking-wide leading-none mt-0.5">Error</span>
+                <AlertCircle size={16} />
+                <span className="text-[10px] font-medium tracking-wide leading-none">Error</span>
             </>
         );
     } else if (status === 'syncing') {
-        colorClass = 'text-indigo-500';
+        colorClass = 'text-[#F44E2C]';
         content = (
             <div className="flex items-center justify-center gap-[3px] px-1 h-3">
-                <div className="w-1.5 h-1.5 bg-indigo-500 dark:bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                <div className="w-1.5 h-1.5 bg-indigo-500 dark:bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                <div className="w-1.5 h-1.5 bg-indigo-500 dark:bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                <div className="w-1.5 h-1.5 bg-[#F44E2C] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-1.5 h-1.5 bg-[#F44E2C] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-1.5 h-1.5 bg-[#F44E2C] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
             </div>
         );
     } else if (status === 'synced' && showSuccess) {
         colorClass = 'text-emerald-500';
         content = (
             <>
-                <Check size={14} strokeWidth={3} />
-                <span className="text-[10px] font-bold uppercase tracking-wider leading-none mt-0.5">Synced</span>
+                <Check size={16} strokeWidth={3} />
+                <span className="text-[10px] font-bold uppercase tracking-wider leading-none">Synced</span>
             </>
         );
     } else {
@@ -784,8 +836,8 @@ function SyncStatusBadge({ status, lastSyncTime, onSync }: { status: SyncStatus,
         colorClass = 'text-dark-bg/60 dark:text-light-bg/60';
         content = (
             <>
-                {status === 'synced' ? <Check size={14} strokeWidth={2} className="opacity-70" /> : <Cloud size={14} className="opacity-70" />}
-                {timeString && <span className="text-[10px] font-medium tracking-wide leading-none mt-0.5 opacity-80">{timeString}</span>}
+                {status === 'synced' ? <Check size={16} strokeWidth={2} className="opacity-70" /> : <Cloud size={16} className="opacity-70" />}
+                {timeString && <span className="text-[10px] font-medium tracking-wide leading-none opacity-80">{timeString}</span>}
             </>
         );
     }
