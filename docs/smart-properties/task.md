@@ -1,0 +1,21 @@
+# Smart Properties Design Task
+
+- [x] Brainstorming & Architecture Discussion
+    - [x] Tech Stack Rationale & "Ghost Feature" Strategy
+    - [x] Defining "Smart Folders" (Popup-based Setup)
+    - [x] Property Builder Mechanics (In-Context editing)
+    - [x] Folder Logic (Direct-Only scope - NO Inheritance)
+    - [x] Addressing Concerns (Sync, Weight, UX impact)
+- [ ] Technical Design & Refinement
+    - [ ] Formalize `.keim-schema.json` specification
+    - [ ] Design Isolation Strategy (Feature Flags in `constants.ts`)
+    - [ ] Create UI Mockups for "Setup Popup"
+    - [ ] Create UI Mockups for "Properties Header"
+    - [ ] Design Relational Mapping (@Link logic)
+- [ ] Implementation Phases
+    - [/] Feature Flag: Initialize `ENABLE_SMART_PROPS` guard
+    - [ ] Sidebar: "Make Smart" context menu & Folder Icons
+    - [ ] UI: Folder Configuration Popup (Schema Builder)
+    - [ ] Editor: Properties Header (YAML Parsing & Sync)
+    - [ ] View: Dynamic Dashboard Table (The "Loop" Component)
+    - [ ] Verification: Manual testing cycle for each phase before merge
