@@ -724,6 +724,7 @@ function App() {
         onSwitchToBrowserStorage={handleUseBrowserStorage}
         onSyncStatusChange={(connected) => setSyncStatus(connected ? 'idle' : 'disconnected')}
         onInstallPWA={installPrompt ? handleInstallPWA : undefined}
+        storageMode={storageMode}
       />
 
       {/* Render Universal Search Palette */}

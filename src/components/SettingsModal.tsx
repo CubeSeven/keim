@@ -57,9 +57,10 @@ interface SettingsModalProps {
     onSyncStatusChange?: (connected: boolean) => void;
     onInstallPWA?: () => void;
     initialTab?: 'general' | 'sync' | 'appearance' | 'shortcuts';
+    storageMode?: 'vault' | 'indexeddb' | 'unset';
 }
 
-export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChangeVault, onSwitchToBrowserStorage, onSyncStatusChange, onInstallPWA, initialTab = 'general' }: SettingsModalProps) {
+export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChangeVault, onSwitchToBrowserStorage, onSyncStatusChange, onInstallPWA, initialTab = 'general', storageMode }: SettingsModalProps) {
     const [syncing, setSyncing] = useState(false);
     const [connected, setConnected] = useState(false);
     const [lastSync, setLastSync] = useState<number | null>(null);
@@ -205,160 +206,206 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
 
                                     {/* Vault / Storage Section */}
                                     {((onChangeVault && isFileSystemSupported()) || onSwitchToBrowserStorage) && (
-                                        <div className="space-y-3">
-                                            <label className="text-sm font-medium opacity-70 uppercase tracking-wider">Storage Mode</label>
-                                            <div className="p-4 bg-light-ui/50 dark:bg-dark-ui/50 rounded-lg space-y-4 border border-light-ui dark:border-dark-ui">
-                                                <div className="flex items-start gap-3">
-                                                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500 shrink-0">
-                                                        <Info size={16} />
+                                        <div className="space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-sm font-bold opacity-50 uppercase tracking-widest">Storage Mode</label>
+                                                {!isFileSystemSupported() && (
+                                                    <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter">Limited Mode</span>
+                                                )}
+                                            </div>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {/* Local Disk Card */}
+                                                <div className={`relative p-5 rounded-2xl border-2 transition-all flex flex-col gap-4 ${storageMode === 'vault' ? 'border-indigo-500 bg-indigo-500/5 shadow-md shadow-indigo-500/10' : 'border-light-ui dark:border-dark-ui bg-light-ui/20 dark:bg-dark-ui/20 opacity-80'}`}>
+                                                    <div className="flex items-center justify-between">
+                                                        <div className={`p-2.5 rounded-xl ${storageMode === 'vault' ? 'bg-indigo-500 text-white' : 'bg-dark-bg/5 dark:bg-light-bg/5 text-dark-bg dark:text-light-bg'}`}>
+                                                            <HardDrive size={22} />
+                                                        </div>
+                                                        {storageMode === 'vault' && (
+                                                            <div className="flex items-center gap-1.5 text-indigo-500 font-bold text-[10px] uppercase tracking-wider bg-white dark:bg-indigo-500/20 px-2 py-1 rounded-full border border-indigo-500/20">
+                                                                <CheckCircle2 size={12} /> Active
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <div className="space-y-1">
-                                                        <p className="text-sm font-medium">Which storage should I use?</p>
-                                                        <p className="text-xs opacity-70 leading-relaxed">
-                                                            <strong>Vault:</strong> Best for desktop. Files are saved as real <code className="bg-dark-bg/10 dark:bg-light-bg/10 px-1 rounded">.md</code> files on your computer.
-                                                            <br />
-                                                            <strong>Browser:</strong> Best for mobility. Notes are kept in your browser database and synced via Cloud.
+                                                    <div className="space-y-1.5 flex-1">
+                                                        <h4 className="font-bold text-base leading-none">Local Disk (Vault)</h4>
+                                                        <p className="text-xs opacity-60 leading-relaxed">
+                                                            Saves notes as real <code className="bg-dark-bg/5 dark:bg-light-bg/10 px-1 rounded font-mono">.md</code> files. Best for Obsidian users or desktop.
                                                         </p>
                                                     </div>
-                                                </div>
 
-                                                <div className="flex flex-col gap-2 pt-2">
-                                                    {onChangeVault && isFileSystemSupported() && (
+                                                    {storageMode !== 'vault' && onChangeVault && isFileSystemSupported() && (
                                                         <button
                                                             disabled={pickingVault}
                                                             onClick={async () => {
                                                                 setPickingVault(true);
                                                                 try {
-                                                                    handleDisconnect(); // Force disconnect Dropbox for safety
+                                                                    handleDisconnect();
                                                                     await onChangeVault();
                                                                     onClose();
                                                                 } finally {
                                                                     setPickingVault(false);
                                                                 }
                                                             }}
-                                                            className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium bg-light-bg dark:bg-dark-bg text-dark-bg dark:text-light-bg border border-light-ui dark:border-dark-ui hover:bg-indigo-500/10 hover:border-indigo-500/50 transition-all disabled:opacity-50"
+                                                            className="w-full py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-bold transition-all shadow-lg shadow-indigo-500/20"
                                                         >
-                                                            <HardDrive size={16} className="text-indigo-500" />
-                                                            {pickingVault ? 'Waiting for folder…' : 'Use Local Disk (Vault)'}
+                                                            {pickingVault ? 'Choosing folder...' : 'Select Folder'}
                                                         </button>
                                                     )}
-                                                    {onSwitchToBrowserStorage && (
+                                                </div>
+
+                                                {/* Browser Storage Card */}
+                                                <div className={`relative p-5 rounded-2xl border-2 transition-all flex flex-col gap-4 ${storageMode === 'indexeddb' ? 'border-indigo-500 bg-indigo-500/5 shadow-md shadow-indigo-500/10' : 'border-light-ui dark:border-dark-ui bg-light-ui/20 dark:bg-dark-ui/20 opacity-80'}`}>
+                                                    <div className="flex items-center justify-between">
+                                                        <div className={`p-2.5 rounded-xl ${storageMode === 'indexeddb' ? 'bg-indigo-500 text-white' : 'bg-dark-bg/5 dark:bg-light-bg/5 text-dark-bg dark:text-light-bg'}`}>
+                                                            <Database size={22} />
+                                                        </div>
+                                                        {storageMode === 'indexeddb' && (
+                                                            <div className="flex items-center gap-1.5 text-indigo-500 font-bold text-[10px] uppercase tracking-wider bg-white dark:bg-indigo-500/20 px-2 py-1 rounded-full border border-indigo-500/20">
+                                                                <CheckCircle2 size={12} /> Active
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="space-y-1.5 flex-1">
+                                                        <h4 className="font-bold text-base leading-none">Browser Storage</h4>
+                                                        <p className="text-xs opacity-60 leading-relaxed">
+                                                            Zero setup. Notes are kept in your browser database and synced via Cloud (Dropbox).
+                                                        </p>
+                                                    </div>
+
+                                                    {storageMode !== 'indexeddb' && onSwitchToBrowserStorage && (
                                                         <button
                                                             onClick={async () => {
-                                                                handleDisconnect(); // Force disconnect Dropbox for safety
+                                                                handleDisconnect();
                                                                 await onSwitchToBrowserStorage();
                                                                 onClose();
                                                             }}
-                                                            className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-dark-bg/70 dark:text-light-bg/70 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 transition-all w-full text-left"
+                                                            className="w-full py-2.5 rounded-xl bg-dark-bg dark:bg-light-bg text-light-bg dark:text-dark-bg text-sm font-bold hover:opacity-90 transition-all"
                                                         >
-                                                            <Database size={16} className="opacity-70" />
-                                                            Switch to Browser Storage
+                                                            Switch to Browser
                                                         </button>
                                                     )}
                                                 </div>
                                             </div>
+
+                                            {/* Availability Warning Box if not supported */}
+                                            {!isFileSystemSupported() && (
+                                                <div className="flex items-start gap-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
+                                                    <AlertCircle size={20} className="shrink-0 mt-0.5" />
+                                                    <div className="space-y-1">
+                                                        <p className="text-xs font-bold uppercase tracking-wide">Why is Local Disk unavailable?</p>
+                                                        <p className="text-xs opacity-90 leading-relaxed">
+                                                            This feature requires the <strong>File System Access API</strong>, currently only available on desktop browsers like Chrome, Edge, or Brave. It is not supported on mobile devices or browsers like Safari and Firefox for security reasons.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 
                                     {/* Advanced Utilities */}
-                                    <div className="space-y-3">
-                                        <label className="text-sm font-medium opacity-70 uppercase tracking-wider">Advanced</label>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <button
-                                                onClick={async () => {
-                                                    setExporting(true);
-                                                    try {
-                                                        const count = await exportToFolder();
-                                                        setFeedback({ type: 'success', msg: `Exported ${count} notes!` });
-                                                    } catch (e) {
-                                                        const msg = (e as Error)?.message || 'Export failed';
-                                                        setFeedback({ type: 'error', msg });
-                                                    } finally {
-                                                        setExporting(false);
-                                                    }
-                                                }}
-                                                disabled={exporting}
-                                                className="flex items-center gap-3 p-3 rounded-lg border border-light-ui dark:border-dark-ui hover:bg-light-ui/50 dark:hover:bg-dark-ui/50 transition-colors text-left"
-                                            >
-                                                <div className="p-2 bg-dark-bg/5 dark:bg-light-bg/5 rounded-md shrink-0">
-                                                    <Download size={16} className="opacity-70" />
-                                                </div>
-                                                <div>
-                                                    <span className="text-sm font-semibold block">Export All</span>
-                                                    <span className="text-xs opacity-60">Save notes to folder</span>
-                                                </div>
-                                            </button>
-
-                                            <button
-                                                onClick={() => {
-                                                    const input = document.createElement('input');
-                                                    input.type = 'file';
-                                                    input.multiple = true;
-                                                    input.accept = '.md';
-                                                    input.webkitdirectory = true;
-                                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                                    (input as any).directory = true;
-
-                                                    input.onchange = async (e: Event) => {
-                                                        const target = e.target as HTMLInputElement;
-                                                        const fileList = Array.from(target.files || []) as File[];
-                                                        if (fileList.length === 0) return;
-                                                        setImporting(true);
-                                                        try {
-                                                            const fileData = fileList.map(f => ({
-                                                                file: f,
-                                                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                                                path: (f as any).webkitRelativePath || f.name
-                                                            }));
-                                                            const count = await importMarkdownFiles(fileData);
-                                                            setFeedback({ type: 'success', msg: `Imported ${count} notes!` });
-                                                        } catch (err) {
-                                                            const msg = (err as Error)?.message || 'Import failed';
-                                                            setFeedback({ type: 'error', msg });
-                                                        } finally {
-                                                            setImporting(false);
-                                                        }
-                                                    };
-                                                    input.click();
-                                                }}
-                                                disabled={importing}
-                                                className="flex items-center gap-3 p-3 rounded-lg border border-light-ui dark:border-dark-ui hover:bg-light-ui/50 dark:hover:bg-dark-ui/50 transition-colors text-left"
-                                            >
-                                                <div className="p-2 bg-dark-bg/5 dark:bg-light-bg/5 rounded-md shrink-0">
-                                                    <Upload size={16} className="opacity-70" />
-                                                </div>
-                                                <div>
-                                                    <span className="text-sm font-semibold block">Import Files</span>
-                                                    <span className="text-xs opacity-60">Load .md files</span>
-                                                </div>
-                                            </button>
-
-                                            {onInstallPWA && (
+                                    {isFileSystemSupported() && (
+                                        <div className="space-y-3">
+                                            <label className="text-sm font-medium opacity-70 uppercase tracking-wider">Advanced</label>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {storageMode !== 'vault' && (
+                                                    <button
+                                                        onClick={async () => {
+                                                            setExporting(true);
+                                                            try {
+                                                                const count = await exportToFolder();
+                                                                setFeedback({ type: 'success', msg: `Exported ${count} notes!` });
+                                                            } catch (e) {
+                                                                const msg = (e as Error)?.message || 'Export failed';
+                                                                setFeedback({ type: 'error', msg });
+                                                            } finally {
+                                                                setExporting(false);
+                                                            }
+                                                        }}
+                                                        disabled={exporting}
+                                                        className="flex items-center gap-3 p-3 rounded-lg border border-light-ui dark:border-dark-ui hover:bg-light-ui/50 dark:hover:bg-dark-ui/50 transition-colors text-left"
+                                                    >
+                                                        <div className="p-2 bg-dark-bg/5 dark:bg-light-bg/5 rounded-md shrink-0">
+                                                            <Download size={16} className="opacity-70" />
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-sm font-semibold block">Export All</span>
+                                                            <span className="text-xs opacity-60">Save notes to folder</span>
+                                                        </div>
+                                                    </button>
+                                                )}
+    
                                                 <button
                                                     onClick={() => {
-                                                        onInstallPWA();
-                                                        onClose();
+                                                        const input = document.createElement('input');
+                                                        input.type = 'file';
+                                                        input.multiple = true;
+                                                        input.accept = '.md';
+                                                        input.webkitdirectory = true;
+                                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                                        (input as any).directory = true;
+    
+                                                        input.onchange = async (e: Event) => {
+                                                            const target = e.target as HTMLInputElement;
+                                                            const fileList = Array.from(target.files || []) as File[];
+                                                            if (fileList.length === 0) return;
+                                                            setImporting(true);
+                                                            try {
+                                                                const fileData = fileList.map(f => ({
+                                                                    file: f,
+                                                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                                                    path: (f as any).webkitRelativePath || f.name
+                                                                }));
+                                                                const count = await importMarkdownFiles(fileData);
+                                                                setFeedback({ type: 'success', msg: `Imported ${count} notes!` });
+                                                            } catch (err) {
+                                                                const msg = (err as Error)?.message || 'Import failed';
+                                                                setFeedback({ type: 'error', msg });
+                                                            } finally {
+                                                                setImporting(false);
+                                                            }
+                                                        };
+                                                        input.click();
                                                     }}
-                                                    className="col-span-2 flex items-center justify-between p-4 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-500/20 group mt-2"
+                                                    disabled={importing}
+                                                    className={`flex items-center gap-3 p-3 rounded-lg border border-light-ui dark:border-dark-ui hover:bg-light-ui/50 dark:hover:bg-dark-ui/50 transition-colors text-left ${storageMode === 'vault' ? 'col-span-2' : ''}`}
                                                 >
-                                                    <div className="flex items-center gap-3">
-                                                        <Monitor size={20} className="group-hover:bounce" />
-                                                        <div className="text-left">
-                                                            <span className="text-sm font-bold tracking-wide block">Install Native App</span>
-                                                            <p className="text-xs opacity-90 font-medium">Use Keim Notes as a desktop app</p>
-                                                        </div>
+                                                    <div className="p-2 bg-dark-bg/5 dark:bg-light-bg/5 rounded-md shrink-0">
+                                                        <Upload size={16} className="opacity-70" />
                                                     </div>
-                                                    <Download size={18} className="opacity-80" />
+                                                    <div>
+                                                        <span className="text-sm font-semibold block">Import Files</span>
+                                                        <span className="text-xs opacity-60">Load .md files</span>
+                                                    </div>
                                                 </button>
+    
+                                                {onInstallPWA && (
+                                                    <button
+                                                        onClick={() => {
+                                                            onInstallPWA();
+                                                            onClose();
+                                                        }}
+                                                        className="col-span-2 flex items-center justify-between p-4 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-500/20 group mt-2"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <Monitor size={20} className="group-hover:bounce" />
+                                                            <div className="text-left">
+                                                                <span className="text-sm font-bold tracking-wide block">Install Native App</span>
+                                                                <p className="text-xs opacity-90 font-medium">Use Keim Notes as a desktop app</p>
+                                                            </div>
+                                                        </div>
+                                                        <Download size={18} className="opacity-80" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {feedback && (
+                                                <div className={`mt-3 p-2.5 rounded-lg text-xs font-medium flex items-center gap-2 ${feedback.type === 'success' ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-red-500/10 text-red-600 dark:text-red-400'}`}>
+                                                    {feedback.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                                                    {feedback.msg}
+                                                </div>
                                             )}
                                         </div>
-                                        {feedback && (
-                                            <div className={`mt-3 p-2.5 rounded-lg text-xs font-medium flex items-center gap-2 ${feedback.type === 'success' ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-red-500/10 text-red-600 dark:text-red-400'}`}>
-                                                {feedback.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-                                                {feedback.msg}
-                                            </div>
-                                        )}
-                                    </div>
+                                    )}
                                 </div>
                             )}
 
