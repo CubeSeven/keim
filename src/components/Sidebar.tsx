@@ -134,8 +134,6 @@ export default function Sidebar({
                             paddingLeft: 'var(--spacing-safe-left, 0px)'
                         }}
                     >
-                        <img src="keim_logo.png" alt="Keim Logo" className="w-8 h-8 rounded-lg shadow-sm" />
-                        <span className="font-bold text-lg tracking-tight text-dark-bg/80 dark:text-light-bg/80">Keim</span>
                     </div>
 
                     <div
