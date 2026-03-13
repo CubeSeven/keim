@@ -32,10 +32,7 @@ export async function buildSearchIndex() {
     console.log('[Search] Building index started...');
     const start = performance.now();
 
-    // 1. Clear existing index
-    miniSearch.removeAll();
-
-    // 2. Fetch all notes (excluding folders and deleted items)
+    // 1. Fetch all notes (excluding folders and deleted items)
     const notes = await db.items.where('type').equals('note').filter(n => !n.isDeleted).toArray();
 
     // 3. Fetch all contents
@@ -57,7 +54,8 @@ export async function buildSearchIndex() {
         };
     });
 
-    // 5. Index them!
+    // 4. Clear existing index and index them atomically!
+    miniSearch.removeAll();
     miniSearch.addAll(documents);
 
     console.log(`[Search] Built index with ${documents.length} notes in ${Math.round(performance.now() - start)}ms.`);

@@ -212,6 +212,7 @@ export async function deleteFromVault(relativePath: string): Promise<void> {
             dir = await dir.getDirectoryHandle(parts[i], { create: false });
         }
         await dir.removeEntry(parts[parts.length - 1], { recursive: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
         // If it's already gone (NotFoundError) or we can't find the parent, 
         // that's fine, the goal of deletion is met.
@@ -259,8 +260,11 @@ export async function createFolderInVault(folderPath: string): Promise<void> {
 export async function moveVaultFolder(
     oldFolderPath: string,
     newFolderPath: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     allDbItems: any[], // using any to avoid direct circular dep on db.ts types
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     allDbContents: any[],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     getItemPath: (id: number, items: any[]) => string
 ): Promise<void> {
     if (!_vaultHandle) return;
@@ -308,8 +312,11 @@ export async function moveVaultFolder(
  * This is the 'Source of Truth' enforcer.
  */
 export async function reconcileVault(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     allDbItems: any[],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     allDbContents: any[],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     getItemPath: (id: number, items: any[]) => string,
     targetItemIds?: number[] // Optional: only reconcile these specific items
 ): Promise<void> {
@@ -347,12 +354,12 @@ export async function reconcileVault(
         const physicalFolders = [...physicalTree.folders].sort((a, b) => b.path.length - a.path.length);
         for (const pf of physicalFolders) {
             if (!expectedFolderPaths.has(pf.path)) {
-                try { await deleteFromVault(pf.path); } catch {}
+                try { await deleteFromVault(pf.path); } catch { /* ignore */ }
             }
         }
         for (const pn of physicalTree.notes) {
             if (!expectedNotePaths.has(pn.path)) {
-                try { await deleteFromVault(pn.path); } catch {}
+                try { await deleteFromVault(pn.path); } catch { /* ignore */ }
             }
         }
     }

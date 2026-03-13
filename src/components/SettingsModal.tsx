@@ -1,4 +1,4 @@
-import { X, Moon, Sun, Monitor, CheckCircle2, AlertCircle, Download, Upload, Info, HardDrive, Database, Settings2, Palette, RefreshCw } from 'lucide-react';
+import { X, Moon, Sun, Monitor, CheckCircle2, AlertCircle, Download, Upload, Info, HardDrive, Database, Settings2, Palette, RefreshCw, Command } from 'lucide-react';
 import { syncNotesWithDrive, isDriveConnected, getLastSyncTime, authorizeDropbox, loginToDropbox, disconnectDropbox } from '../lib/sync';
 import { exportToFolder, importMarkdownFiles } from '../lib/export-import';
 import { APP_VERSION } from '../constants';
@@ -26,6 +26,27 @@ const OneDriveIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
+function ShortcutRow({ keys, label, description }: { keys: string[], label: string, description: string, iconOnly?: boolean }) {
+    return (
+        <div className="flex items-center justify-between p-3 rounded-xl bg-dark-bg/5 dark:bg-light-bg/5 border border-transparent hover:border-black/5 dark:hover:border-white/10 transition-all group shadow-sm">
+            <div className="space-y-0.5">
+                <p className="text-sm font-semibold">{label}</p>
+                <p className="text-xs opacity-50">{description}</p>
+            </div>
+            <div className="flex items-center gap-1.5">
+                {keys.map((k, i) => (
+                    <div key={k} className="flex items-center gap-1.5">
+                        <kbd className="min-w-[24px] h-6 flex items-center justify-center px-1.5 rounded bg-white dark:bg-white/10 border border-black/10 dark:border-white/20 shadow-sm text-[10px] font-bold font-mono uppercase tracking-tighter text-dark-bg dark:text-light-bg">
+                            {k}
+                        </kbd>
+                        {i < keys.length - 1 && <span className="text-[10px] opacity-30 font-bold text-dark-bg dark:text-light-bg">+</span>}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 interface SettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -35,7 +56,7 @@ interface SettingsModalProps {
     onSwitchToBrowserStorage?: () => Promise<void>;
     onSyncStatusChange?: (connected: boolean) => void;
     onInstallPWA?: () => void;
-    initialTab?: 'general' | 'sync' | 'appearance';
+    initialTab?: 'general' | 'sync' | 'appearance' | 'shortcuts';
 }
 
 export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChangeVault, onSwitchToBrowserStorage, onSyncStatusChange, onInstallPWA, initialTab = 'general' }: SettingsModalProps) {
@@ -49,7 +70,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
     const [feedback, setFeedback] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
 
     // UI State
-    const [activeTab, setActiveTab] = useState<'general' | 'sync' | 'appearance'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'sync' | 'appearance' | 'shortcuts'>('general');
 
     useEffect(() => {
         if (isOpen) {
@@ -121,7 +142,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                 onClick={onClose}
                 aria-hidden="true"
             />
-            <div className="relative w-full max-w-2xl bg-light-bg dark:bg-dark-bg rounded-xl shadow-2xl border border-light-ui dark:border-dark-ui flex flex-col md:flex-row overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="relative w-full max-w-2xl bg-light-bg dark:bg-dark-bg rounded-lg shadow-2xl border border-light-ui dark:border-dark-ui flex flex-col md:flex-row overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 {/* Fixed Max-Height container for the modal content */}
                 <div className="flex flex-col md:flex-row w-full max-h-[85vh] md:max-h-[600px] md:h-[600px]">
                     {/* Sidebar / Tabs Navigation */}
@@ -150,6 +171,13 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                     ${activeTab === 'appearance' ? 'bg-light-bg dark:bg-dark-bg text-dark-bg dark:text-light-bg shadow-sm' : 'text-dark-bg/70 dark:text-light-bg/70 hover:bg-light-bg/50 dark:hover:bg-dark-bg/50'}`}
                             >
                                 <Palette size={16} /> Appearance
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('shortcuts')}
+                                className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap
+                                    ${activeTab === 'shortcuts' ? 'bg-light-bg dark:bg-dark-bg text-dark-bg dark:text-light-bg shadow-sm' : 'text-dark-bg/70 dark:text-light-bg/70 hover:bg-light-bg/50 dark:hover:bg-dark-bg/50'}`}
+                            >
+                                <Command size={16} /> Shortcuts
                             </button>
                         </nav>
                         <div className="mt-auto p-4">
@@ -343,7 +371,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
 
                                     <div className="space-y-4">
                                         {/* Dropbox Provider */}
-                                        <div className="border border-light-ui dark:border-dark-ui rounded-xl overflow-hidden shadow-sm">
+                                        <div className="border border-light-ui dark:border-dark-ui rounded-lg overflow-hidden shadow-sm">
                                             <div className="p-4 bg-light-ui/30 dark:bg-dark-ui/30 flex items-center justify-between border-b border-light-ui dark:border-dark-ui">
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-10 h-10 rounded-lg bg-[#0061FF]/10 flex items-center justify-center shrink-0">
@@ -413,7 +441,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                         </div>
 
                                         {/* Google Drive Provider (Coming Soon) */}
-                                        <div className="border border-light-ui dark:border-dark-ui rounded-xl overflow-hidden shadow-sm opacity-60 grayscale cursor-not-allowed group">
+                                        <div className="border border-light-ui dark:border-dark-ui rounded-lg overflow-hidden shadow-sm opacity-60 grayscale cursor-not-allowed group">
                                             <div className="p-4 bg-light-ui/30 dark:bg-dark-ui/30 flex items-center justify-between border-b border-light-ui dark:border-dark-ui">
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
@@ -433,7 +461,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                         </div>
 
                                         {/* OneDrive Provider (Coming Soon) */}
-                                        <div className="border border-light-ui dark:border-dark-ui rounded-xl overflow-hidden shadow-sm opacity-60 grayscale cursor-not-allowed">
+                                        <div className="border border-light-ui dark:border-dark-ui rounded-lg overflow-hidden shadow-sm opacity-60 grayscale cursor-not-allowed">
                                             <div className="p-4 bg-light-ui/30 dark:bg-dark-ui/30 flex items-center justify-between border-b border-light-ui dark:border-dark-ui">
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-10 h-10 rounded-lg bg-[#0078D4]/10 flex items-center justify-center shrink-0">
@@ -495,6 +523,46 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                         </div>
                                     </div>
 
+                                </div>
+                            )}
+
+                            {/* --- Shortcuts Tab --- */}
+                            {activeTab === 'shortcuts' && (
+                                <div className="space-y-8 animate-in fade-in duration-200">
+                                    <div className="pb-2 border-b border-light-ui dark:border-dark-ui">
+                                        <h3 className="text-xl font-semibold">Keyboard Shortcuts</h3>
+                                    </div>
+
+                                    <div className="grid gap-6">
+                                        <section className="space-y-3">
+                                            <h4 className="text-sm font-bold uppercase tracking-wider opacity-50">Global Actions</h4>
+                                            <div className="grid gap-2">
+                                                <ShortcutRow keys={['Alt', 'N']} label="New Note" description="Creates a new note (as sibling if selected)" />
+                                                <ShortcutRow keys={['Alt', 'F']} label="New Folder" description="Creates a new folder" />
+                                                <ShortcutRow keys={['Alt', 'K']} label="Universal Search" description="Open the command palette" />
+                                                <ShortcutRow keys={['Alt', 'S']} label="Force Sync" description="Trigger cloud sync manually" />
+                                            </div>
+                                        </section>
+
+                                        <section className="space-y-3">
+                                            <h4 className="text-sm font-bold uppercase tracking-wider opacity-50">Editor & Sidebar</h4>
+                                            <div className="grid gap-2">
+                                                <ShortcutRow keys={['Alt', 'D']} label="Delete Item" description="Prepare deletion for selected note/folder" />
+                                                <ShortcutRow keys={['Enter']} label="Confirm" description="Finalize deletion or rename" />
+                                                <ShortcutRow keys={['Esc']} label="Cancel" description="Close menus or cancel actions" />
+                                                <ShortcutRow keys={['Click']} label="Deselect" description="Click empty sidebar space to reset context" />
+                                            </div>
+                                        </section>
+
+                                        <div className="p-4 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-xl border border-indigo-500/10 flex gap-4 items-center">
+                                            <div className="w-10 h-10 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-500 shrink-0">
+                                                <Info size={20} />
+                                            </div>
+                                            <p className="text-xs opacity-70 leading-relaxed italic">
+                                                <strong>Tip:</strong> Keim Notes is designed to be keyboard-first. Using shortcuts can double your note-taking speed!
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 

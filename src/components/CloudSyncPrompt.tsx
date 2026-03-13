@@ -25,8 +25,8 @@ export default function CloudSyncPrompt({ onConnect }: CloudSyncPromptProps) {
     if (!isVisible) return null;
 
     return (
-        <div className="fixed bottom-4 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-full md:max-w-md z-[100] bg-light-bg/90 dark:bg-dark-bg/90 backdrop-blur-xl border border-light-ui dark:border-dark-ui shadow-2xl rounded-2xl p-4 flex items-start gap-4 animate-in slide-in-from-bottom-5 duration-300">
-            <div className="w-10 h-10 shrink-0 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-500">
+        <div className="fixed bottom-4 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-full md:max-w-md z-[100] bg-light-bg/90 dark:bg-dark-bg/90 backdrop-blur-xl border border-light-ui dark:border-dark-ui shadow-2xl rounded-xl p-4 flex items-start gap-4 animate-in slide-in-from-bottom-5 duration-300">
+            <div className="w-10 h-10 shrink-0 bg-indigo-500/10 rounded-lg flex items-center justify-center text-indigo-500">
                 <Cloud size={20} />
             </div>
             <div className="flex-1">

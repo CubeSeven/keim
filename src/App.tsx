@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Sidebar from './components/Sidebar';
+import SmartFolderPopup from './components/SmartFolderPopup';
 import Editor from './components/Editor';
 import { db, addItem, getFullPath, getItemPath } from './lib/db';
+import { readVaultTree } from './lib/vault';
 import { PanelLeft, HardDrive, FileText } from 'lucide-react';
 import SettingsModal from './components/SettingsModal';
 import WelcomeScreen from './components/WelcomeScreen';
@@ -9,11 +11,11 @@ import { authorizeDropbox, syncNotesWithDrive, isDriveConnected, initSync, disco
 import {
   getStorageMode, setStorageMode,
   openVaultPicker, restoreVaultHandle,
-  readVaultTree, readNoteContent, hasSavedVault
+  readNoteContent, hasSavedVault
 } from './lib/vault';
 import { CommandPalette } from './components/CommandPalette';
 import { buildSearchIndex } from './lib/search';
-import MobileDock from './components/MobileDock';
+import NavigationDock from './components/NavigationDock';
 import CloudSyncPrompt from './components/CloudSyncPrompt';
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'disconnected';
@@ -145,6 +147,22 @@ function App() {
     };
     channel.addEventListener('message', handler);
     return () => channel.close();
+  }, []);
+
+  // --- Smart Folder Popup Global State ---
+  const [smartPopupState, setSmartPopupState] = useState<{ isOpen: boolean, folderId?: number, folderTitle?: string }>({ isOpen: false });
+
+  useEffect(() => {
+    const handleOpenSmartPopup = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setSmartPopupState({
+        isOpen: true,
+        folderId: detail.folderId,
+        folderTitle: detail.folderTitle
+      });
+    };
+    window.addEventListener('keim_open_smart_folder_popup', handleOpenSmartPopup);
+    return () => window.removeEventListener('keim_open_smart_folder_popup', handleOpenSmartPopup);
   }, []);
 
   // --- Load Vault Tree into IndexedDB mirror ---
@@ -402,27 +420,6 @@ function App() {
     }
   }, []);
 
-  // --- Keyboard Shortcuts ---
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // New Shortcuts: Alt + N, Alt + F, Alt + S
-      // Use e.code instead of e.key on Mac to avoid Alt character composition issues
-      if (e.altKey) {
-        if (e.code === 'KeyN') {
-          e.preventDefault();
-          handleAddNote(0);
-        } else if (e.code === 'KeyF') {
-          e.preventDefault();
-          handleAddFolder(0);
-        } else if (e.code === 'KeyS') {
-          e.preventDefault();
-          doSync();
-        }
-      }
-    };
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [doSync]);
 
   // --- Seed IndexedDB (for browser storage mode) ---
   async function seedIndexedDb() {
@@ -450,7 +447,20 @@ function App() {
   }
 
   // --- Global Creation Handlers ---
-  const handleAddNote = async (parentId = 0) => {
+  const handleSelectNote = (id: number | null) => {
+    setSelectedNoteId(id);
+    if (id !== null && window.innerWidth < 768) setIsSidebarOpen(false);
+  };
+
+  const handleAddNote = async (explicitParentId?: number) => {
+    let parentId = explicitParentId ?? 0;
+    
+    // Context-aware: use parent of selected note if at root
+    if (explicitParentId === undefined && selectedNoteId) {
+      const currentNote = await db.items.get(selectedNoteId);
+      if (currentNote) parentId = currentNote.parentId;
+    }
+
     const id = await addItem({ parentId, type: 'note', title: 'New Note' }, '');
     localStorage.setItem('keim_has_user_edits', 'true');
 
@@ -477,7 +487,15 @@ function App() {
     setTimeout(tryFocus, 300);
   };
 
-  const handleAddFolder = async (parentId = 0) => {
+  const handleAddFolder = async (explicitParentId?: number) => {
+    let parentId = explicitParentId ?? 0;
+
+    // Context-aware: use parent of selected note if at root
+    if (explicitParentId === undefined && selectedNoteId) {
+      const currentNote = await db.items.get(selectedNoteId);
+      if (currentNote) parentId = currentNote.parentId;
+    }
+
     const id = await addItem({ parentId, type: 'folder', title: 'New Folder' }, '');
     localStorage.setItem('keim_has_user_edits', 'true');
 
@@ -503,6 +521,33 @@ function App() {
     setTimeout(tryRename, 150);
     setTimeout(tryRename, 300);
   };
+
+  // --- Keyboard Shortcuts ---
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // New Shortcuts: Alt + N, Alt + F, Alt + S
+      // Use e.code instead of e.key on Mac to avoid Alt character composition issues
+      if (e.altKey) {
+        if (e.code === 'KeyN') {
+          e.preventDefault();
+          handleAddNote();
+        } else if (e.code === 'KeyF') {
+          e.preventDefault();
+          handleAddFolder();
+        } else if (e.code === 'KeyS') {
+          e.preventDefault();
+          doSync();
+        } else if (e.code === 'KeyD') {
+          e.preventDefault();
+          if (selectedNoteId) {
+            window.dispatchEvent(new CustomEvent('keim_prepare_delete', { detail: selectedNoteId }));
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [doSync, selectedNoteId, handleAddNote, handleAddFolder]);
 
   // --- Welcome Screen Handlers ---
   const handleUnlockVault = async () => {
@@ -648,10 +693,7 @@ function App() {
     <div className="flex h-screen w-full overflow-hidden relative">
       <Sidebar
         selectedNoteId={selectedNoteId}
-        onSelectNote={(id: number) => {
-          setSelectedNoteId(id);
-          if (window.innerWidth < 768) setIsSidebarOpen(false);
-        }}
+        onSelectNote={handleSelectNote}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         onOpenSettings={() => {
@@ -688,8 +730,7 @@ function App() {
       {appState === 'ready' && (
         <CommandPalette
           onSelectNote={(id) => {
-            setSelectedNoteId(id);
-            if (window.innerWidth < 768) setIsSidebarOpen(false);
+            handleSelectNote(id);
           }}
         />
       )}
@@ -704,17 +745,11 @@ function App() {
         />
       )}
 
-      {/* Render Mobile Dock */}
-      {appState === 'ready' && !isSidebarOpen && (
-        <MobileDock
-          onAddNote={() => handleAddNote(0)}
-          onAddFolder={() => handleAddFolder(0)}
-        />
-      )}
+
 
       <button
         onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-        className="fixed z-[60] p-2.5 bg-light-bg/80 dark:bg-dark-bg/80 backdrop-blur-md border border-dark-bg/5 dark:border-light-bg/5 shadow-sm hover:bg-light-ui dark:hover:bg-dark-ui rounded-full text-dark-bg dark:text-light-bg transition-all"
+        className="fixed z-[60] p-2.5 bg-light-bg/70 dark:bg-dark-bg/70 backdrop-blur-md border border-dark-bg/5 dark:border-light-bg/5 shadow-sm hover:bg-light-ui dark:hover:bg-dark-ui rounded-full text-dark-bg dark:text-light-bg transition-all"
         style={{
           top: 'calc(1rem + var(--spacing-safe-top, 0px))',
           left: 'calc(1rem + var(--spacing-safe-left, 0px))'
@@ -732,6 +767,7 @@ function App() {
               noteId={selectedNoteId}
               isVaultLocked={isVaultLocked}
               onUnlockVault={handleUnlockVault}
+              onSelectNote={handleSelectNote}
             />
           ) : (
             <div className="flex h-full flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in duration-500">
@@ -748,7 +784,24 @@ function App() {
             </div>
           )}
         </div>
+
+        {/* Render Navigation Dock inside workspace for perfect centering */}
+        {appState === 'ready' && (
+          <NavigationDock
+            onAddNote={() => handleAddNote(0)}
+            onAddFolder={() => handleAddFolder(0)}
+          />
+        )}
       </main>
+
+      {/* Global Modals */}
+      {smartPopupState.isOpen && smartPopupState.folderId && (
+          <SmartFolderPopup
+              folderId={smartPopupState.folderId}
+              folderTitle={smartPopupState.folderTitle || ''}
+              onClose={() => setSmartPopupState({ isOpen: false })}
+          />
+      )}
     </div>
   );
 }

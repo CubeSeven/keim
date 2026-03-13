@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Command } from 'cmdk';
 import { Search, FileText, Folder } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog';
 import { miniSearch, type SearchResult } from '../lib/search';
 
 interface CommandPaletteProps {
@@ -43,14 +44,17 @@ export function CommandPalette({ onSelectNote }: CommandPaletteProps) {
                 }) as unknown as SearchResult[];
 
                 // 2. Hydrate results (MiniSearch now stores path/icon for us)
-                const hydratedResults = rawResults.slice(0, 15).map(res => ({
-                    ...res,
-                    fullPath: (res as any).fullPath || 'Root',
-                    icon: (res as any).icon,
-                    tags: (res as any).tags?.split(' ') || []
-                }));
+                const hydratedResults = rawResults.slice(0, 15).map(res => {
+                    const r = res as unknown as { fullPath?: string, icon?: string, tags?: string };
+                    return {
+                        ...res,
+                        fullPath: r.fullPath || 'Root',
+                        icon: r.icon,
+                        tags: r.tags?.split(' ') || []
+                    };
+                });
 
-                setResults(hydratedResults as any);
+                setResults(hydratedResults as unknown as (SearchResult & { fullPath: string, icon?: string, tags?: string[] })[]);
             } catch (e) {
                 console.error("Search failed:", e);
             }
@@ -76,7 +80,9 @@ export function CommandPalette({ onSelectNote }: CommandPaletteProps) {
             className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] sm:pt-[20vh] bg-black/40 backdrop-blur-sm transition-all"
             onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}
         >
-            <div className="w-[90vw] max-w-[600px] overflow-hidden rounded-xl bg-light-bg/85 dark:bg-[#1a1a1f]/80 backdrop-blur-xl shadow-2xl border border-black/5 dark:border-white/10 ring-1 ring-black/5 dark:ring-white/10 flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-[90vw] max-w-[600px] overflow-hidden rounded-lg bg-light-bg/85 dark:bg-[#1a1a1f]/80 backdrop-blur-xl shadow-2xl border border-black/5 dark:border-white/10 ring-1 ring-black/5 dark:ring-white/10 flex flex-col animate-in fade-in zoom-in-95 duration-200">
+                <Dialog.Title className="sr-only">Universal Search</Dialog.Title>
+                <Dialog.Description className="sr-only">Search for notes and folders across your workspace.</Dialog.Description>
 
                 {/* Header / Input */}
                 <div className="flex items-center border-b border-black/5 dark:border-white/10 px-4 py-3 bg-transparent relative">
@@ -110,7 +116,7 @@ export function CommandPalette({ onSelectNote }: CommandPaletteProps) {
                                     key={result.id}
                                     value={result.id.toString()} // crucial for cmdk internal tracking
                                     onSelect={() => handleSelect(result.id)}
-                                    className="group flex flex-col gap-1 rounded-lg px-4 py-2 text-sm text-dark-bg dark:text-light-bg cursor-default select-none transition-colors aria-selected:bg-indigo-50 dark:aria-selected:bg-indigo-500/10 aria-selected:text-indigo-600 dark:aria-selected:text-indigo-400 data-[selected=true]:bg-indigo-50 dark:data-[selected=true]:bg-indigo-500/10 data-[selected=true]:text-indigo-600 dark:data-[selected=true]:text-indigo-400"
+                                    className="group flex flex-col gap-1 rounded-lg px-4 py-2 text-sm text-dark-bg dark:text-light-bg cursor-default select-none transition-colors aria-selected:bg-white/50 dark:aria-selected:bg-white/10 data-[selected=true]:bg-white/50 dark:data-[selected=true]:bg-white/10"
                                 >
                                     <div className="flex items-center font-medium">
                                         {result.icon ? (

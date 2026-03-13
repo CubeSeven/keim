@@ -328,6 +328,11 @@ export async function syncNotesWithDrive(background = false) {
                         icon: item.icon
                     }, content?.content || '', item.updated_at);
 
+                    const schema = await db.smartSchemas.where({ folderId: oldId }).first();
+                    if (schema && schema.id) {
+                         await db.smartSchemas.update(schema.id, { folderId: newId });
+                    }
+
                     console.log(`Re-assigned local #${oldId} to #${newId}`);
                 }
                 // Refresh local items
@@ -362,6 +367,7 @@ export async function syncNotesWithDrive(background = false) {
 
                     await db.items.delete(item.id!);
                     await db.contents.delete(item.id!);
+                    await db.smartSchemas.where({ folderId: item.id! }).delete();
                     dedupedIds.add(item.id!);
                 }
                 // Final refresh
@@ -421,6 +427,7 @@ export async function syncNotesWithDrive(background = false) {
                         // and correctly overwrite the physical file with the cloud content.
                         await db.items.delete(localItem.id);
                         await db.contents.delete(localItem.id);
+                        await db.smartSchemas.where({ folderId: localItem.id }).delete();
                         dedupedIds.add(localItem.id);
                         // Prevent it from being uploaded
                         continue;
@@ -447,6 +454,7 @@ export async function syncNotesWithDrive(background = false) {
                     await db.items.update(id, { isDeleted: true, updated_at: Date.now() });
                     // Clean up content for confirmed remote deletions
                     await db.contents.delete(id);
+                    await db.smartSchemas.where({ folderId: id }).delete();
                     if (storageMode === 'vault') {
                         try {
                             const parentPath = getItemPath(existingLocal.parentId, localItems);
@@ -528,6 +536,65 @@ export async function syncNotesWithDrive(background = false) {
         if (toUpload.length > 0 || toDownload.length > 0) {
             remoteManifest.lastUpdated = Date.now();
             await uploadAppFile('/manifest.json', JSON.stringify(remoteManifest));
+        }
+
+        // --- SMART SCHEMAS SYNC ---
+        const schemasBlob = await downloadAppFile('/schemas.json');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let remoteSchemas: Record<number, any[]> = {};
+        if (schemasBlob) {
+            try { remoteSchemas = JSON.parse(await schemasBlob.text()); } catch { /* ignore */ }
+        }
+        
+        let schemasModified = false;
+
+        // Apply downloads: for every folder we downloaded, overwrite local schema
+        // If there's no schema on remote, remove local schema (cloud wins).
+        for (const downloadedId of toDownload) {
+             const rSchema = remoteSchemas[downloadedId];
+             if (rSchema) {
+                 const existing = await db.smartSchemas.where({ folderId: downloadedId }).first();
+                 if (existing && existing.id) {
+                      await db.smartSchemas.update(existing.id, { fields: rSchema });
+                 } else {
+                      await db.smartSchemas.add({ folderId: downloadedId, fields: rSchema });
+                 }
+             } else {
+                 await db.smartSchemas.where({ folderId: downloadedId }).delete();
+             }
+        }
+
+        // Apply uploads: any folder that was in toUpload overrides remoteSchemas
+        for (const upItem of toUpload) {
+             if (upItem.type === 'folder' && !upItem.isDeleted) {
+                  const localS = await db.smartSchemas.where({ folderId: upItem.id! }).first();
+                  if (localS && localS.fields.length > 0) {
+                      remoteSchemas[upItem.id!] = localS.fields;
+                      schemasModified = true;
+                  } else if (remoteSchemas[upItem.id!]) {
+                      delete remoteSchemas[upItem.id!];
+                      schemasModified = true;
+                  }
+             } else if (upItem.isDeleted) {
+                  if (remoteSchemas[upItem.id!]) {
+                      delete remoteSchemas[upItem.id!];
+                      schemasModified = true;
+                  }
+             }
+        }
+        
+        // Also cleanup remoteSchemas keys that might have been globally deleted
+        // i.e., keys that exist in remoteSchemas but the folder is deleted in remoteManifest
+        for (const idStr of Object.keys(remoteSchemas)) {
+             const fId = Number(idStr);
+             if (remoteManifest.items[fId]?.isDeleted) {
+                 delete remoteSchemas[fId];
+                 schemasModified = true;
+             }
+        }
+
+        if (schemasModified || !lastSyncTime) { 
+             await uploadAppFile('/schemas.json', JSON.stringify(remoteSchemas));
         }
 
         // --- PHYSICAL VAULT RECONCILIATION ---

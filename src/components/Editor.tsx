@@ -4,12 +4,21 @@ import { db, getFullPath, getItemPath } from '../lib/db';
 import { triggerAutoSync } from '../lib/sync';
 import { getStorageMode, writeNoteToVault, notePathFromTitle } from '../lib/vault';
 import { updateSearchIndex } from '../lib/search';
+import { ENABLE_SMART_PROPS } from '../constants';
+import { parseYamlFrontmatter, serializeYamlFrontmatter } from '../lib/smartProps';
+import PropertiesHeader from './PropertiesHeader';
+
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react';
-import { Crepe } from '@milkdown/crepe';
+import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import EmojiPicker from 'emoji-picker-react';
 import { SmilePlus, X, Tag, Plus, Lock, ArrowRight } from 'lucide-react';
-import { editorViewOptionsCtx } from '@milkdown/kit/core';
+import { editorViewOptionsCtx, editorViewCtx } from '@milkdown/kit/core';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
+import { ProsemirrorAdapterProvider, useNodeViewFactory } from '@prosemirror-adapter/react';
+import { $view } from '@milkdown/kit/utils';
+import { remarkDirectivePlugin, dashboardNode } from '../plugins/dashboardNode';
+import { DashboardNodeView } from '../plugins/DashboardNodeView';
+import { DashboardFolderPicker } from './DashboardFolderPicker';
 import 'katex/dist/katex.min.css';
 import '@milkdown/crepe/theme/common/style.css';
 import '@milkdown/crepe/theme/frame.css';
@@ -18,12 +27,14 @@ interface EditorProps {
     noteId: number;
     isVaultLocked?: boolean;
     onUnlockVault?: () => Promise<boolean>;
+    onSelectNote: (id: number) => void;
 }
 
 interface CrepeBodyProps {
     content: string;
     noteId: number;
     onSave: (markdown: string) => void;
+    onSelectNote: (id: number) => void;
 }
 
 // --- Module-level write-through buffer ---
@@ -31,17 +42,102 @@ interface CrepeBodyProps {
 // Synchronous — always up to date, never lost on unmount.
 const contentBuffer = new Map<number, string>();
 
-function CrepeBody({ content, noteId, onSave }: CrepeBodyProps) {
+function CrepeBodyInner({ content, noteId, onSave, onSelectNote }: CrepeBodyProps) {
     const onSaveRef = useRef(onSave);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const onSelectNoteRef = useRef((_id: number) => { });
+    const factory = useNodeViewFactory();
+    const [showFolderPicker, setShowFolderPicker] = useState(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pendingInsertRef = useRef<{ from: number; view: any } | null>(null);
+
     useEffect(() => {
         onSaveRef.current = onSave;
     }, [onSave]);
+
+    useEffect(() => {
+        onSelectNoteRef.current = onSelectNote;
+    }, [onSelectNote]);
+
+    // Listen for the custom dashboard insert event from the slash menu
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const { from, view } = (e as CustomEvent).detail;
+            pendingInsertRef.current = { from, view };
+            setShowFolderPicker(true);
+        };
+        window.addEventListener('keim-insert-dashboard', handler);
+        return () => window.removeEventListener('keim-insert-dashboard', handler);
+    }, []);
+
+    const handleFolderPicked = (folderName: string) => {
+        const pending = pendingInsertRef.current;
+        if (pending) {
+            const { from, view } = pending;
+            const { state, dispatch } = view;
+            const nodeType = state.schema.nodes['dashboard'];
+            if (nodeType) {
+                const node = nodeType.create({ folder: folderName });
+                const insertPos = state.doc.resolve(from).start();
+                const tr = state.tr
+                    .deleteRange(insertPos, from)
+                    .insert(insertPos, node);
+                dispatch(tr);
+            }
+            pendingInsertRef.current = null;
+        }
+        setShowFolderPicker(false);
+    };
+
+    const initialBody = parseYamlFrontmatter(content).body;
 
     useEditor(
         (root) => {
             const crepe = new Crepe({
                 root,
-                defaultValue: content,
+                defaultValue: initialBody,
+                featureConfigs: {
+                    [CrepeFeature.BlockEdit]: {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        buildMenu: (builder: any) => {
+                            const advancedGroup = builder.getGroup('advanced');
+                            if (advancedGroup) {
+                                advancedGroup.addItem('dashboard', {
+                                    label: 'Dashboard (Smart Folder)',
+                                    icon: `
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+  >
+    <g clip-path="url(#clip0_977_8078)">
+      <path
+        d="M20 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H20C21.1 21 22 20.1 22 19V5C22 3.9 21.1 3 20 3ZM20 5V8H5V5H20ZM15 19H10V10H15V19ZM5 10H8V19H5V10ZM17 19V10H20V19H17Z"
+      />
+    </g>
+    <defs>
+      <clipPath id="clip0_977_8078">
+        <rect width="24" height="24" />
+      </clipPath>
+    </defs>
+  </svg>
+`,
+                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                    onRun: (editorCtx: any) => {
+                                        const view = editorCtx.get(editorViewCtx);
+                                        const { from } = view.state.selection;
+                                        // Dispatch custom event so React can show the folder picker
+                                        window.dispatchEvent(new CustomEvent('keim-insert-dashboard', {
+                                            detail: { from, view }
+                                        }));
+                                    }
+                                });
+                            }
+                        }
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    } as any
+                }
             });
 
             let isFirstUpdate = true;
@@ -70,18 +166,29 @@ function CrepeBody({ content, noteId, onSave }: CrepeBodyProps) {
                         if (isFirstUpdate) {
                             isFirstUpdate = false;
                             const cleanMarkdown = markdown.trim();
-                            const cleanContent = content.trim();
-                            if (cleanMarkdown === cleanContent || cleanMarkdown === '') {
+                            const cleanBody = initialBody.trim();
+                            if (cleanMarkdown === cleanBody || cleanMarkdown === '') {
                                 return; // Ignore un-edited initialization
                             }
                         }
                         
+                        // We must fetch the latest meta from the buffer or initialContent,
+                        // and append this new body to it!
+                        const currentFull = contentBuffer.get(noteId) ?? content;
+                        const { meta } = parseYamlFrontmatter(currentFull);
+                        const newFull = serializeYamlFrontmatter(meta, markdown);
+
                         // 1. Synchronous buffer — NEVER lost, even on instant unmount
-                        contentBuffer.set(noteId, markdown);
+                        contentBuffer.set(noteId, newFull);
                         // 2. Debounced DB persist via parent callback
-                        onSaveRef.current(markdown);
+                        onSaveRef.current(newFull);
                     });
                 })
+                .use(remarkDirectivePlugin)
+                .use(dashboardNode)
+                .use($view(dashboardNode.node, () => factory({ 
+                    component: () => <DashboardNodeView onSelectNote={(id) => onSelectNoteRef.current(id)} /> 
+                })))
                 .use(listener);
 
             return crepe;
@@ -89,12 +196,38 @@ function CrepeBody({ content, noteId, onSave }: CrepeBodyProps) {
         [noteId]
     );
 
-    return <Milkdown />;
+    // Pass latest prop safely to the adapter without breaking memoization
+    useEffect(() => {
+        // If we needed to access the parent's generic onSelectNote we would do it here
+    }, []);
+
+    return (
+        <>
+            <Milkdown />
+            {showFolderPicker && (
+                <DashboardFolderPicker
+                    onPick={handleFolderPicked}
+                    onClose={() => setShowFolderPicker(false)}
+                />
+            )}
+        </>
+    );
 }
 
-export default function Editor({ noteId, isVaultLocked, onUnlockVault }: EditorProps) {
+function CrepeBody(props: CrepeBodyProps) {
+    return (
+        <ProsemirrorAdapterProvider>
+            <CrepeBodyInner {...props} />
+        </ProsemirrorAdapterProvider>
+    );
+}
+
+export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectNote }: EditorProps) {
     const note = useLiveQuery(() => db.items.get(noteId), [noteId]);
     const noteContent = useLiveQuery(() => db.contents.get(noteId), [noteId]);
+    const smartSchema = useLiveQuery(() => 
+        (note?.parentId && ENABLE_SMART_PROPS) ? db.smartSchemas.where({ folderId: note.parentId }).first() : undefined,
+    [note?.parentId]);
     const [title, setTitle] = useState('');
     const saveTimeoutRef = useRef<number | null>(null);
     const [syncRevision, setSyncRevision] = useState(0);
@@ -362,15 +495,15 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault }: EditorP
         <div className="h-full overflow-y-auto">
             {/* Notion-style: centered column, comfortable max-width, generous top padding */}
             <div
-                className="mx-auto w-full px-6 md:px-12 lg:px-24 pb-64"
+                className="mx-auto w-full px-6 md:px-12 lg:px-16 pb-64"
                 style={{
-                    maxWidth: '720px',
+                    maxWidth: '900px',
                     paddingTop: window.innerWidth < 768 ? 'calc(5rem + var(--spacing-safe-top, 0px))' : 'calc(3rem + var(--spacing-safe-top, 0px))'
                 }}
             >
                 {/* ── Vault Locked Banner ── */}
                 {isVaultLocked && (
-                    <div className="mb-10 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
+                    <div className="mb-10 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-indigo-500/20">
                                 <Lock size={18} />
@@ -443,7 +576,7 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault }: EditorP
                             </button>
 
                             {showTagInput && (
-                                <div className="absolute z-50 top-full left-0 mt-1 bg-light-bg/85 dark:bg-[#1a1a1f]/80 backdrop-blur-xl shadow-2xl rounded-xl border border-black/5 dark:border-white/10 p-1">
+                                <div className="absolute z-50 top-full left-0 mt-1 bg-light-bg/85 dark:bg-[#1a1a1f]/80 backdrop-blur-xl shadow-2xl rounded-lg border border-black/5 dark:border-white/10 p-1">
                                     <div className="flex items-center px-2 py-1 gap-1.5 relative">
                                         <span className="text-dark-bg/40 dark:text-light-bg/40 font-medium">#</span>
                                         <input
@@ -498,12 +631,25 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault }: EditorP
                     className="w-full text-4xl font-bold bg-transparent border-none outline-none
                                text-dark-bg dark:text-light-bg
                                placeholder-dark-bg/30 dark:placeholder-light-bg/30
-                               mb-3 leading-tight tracking-tight"
+                               mb-5 leading-tight tracking-tight"
                     style={{ fontFamily: 'inherit', letterSpacing: '-0.01em' }}
                     value={title}
                     onChange={handleTitleChange}
                     placeholder="Untitled"
                 />
+
+                {/* ── Smart Properties Header ── */}
+                {smartSchema && (
+                    <PropertiesHeader 
+                        schema={smartSchema}
+                        content={initialContent}
+                        onUpdateContent={(nc) => {
+                            contentBuffer.set(noteId, nc);
+                            debouncedSaveContent(nc);
+                        }}
+                        onSelectNote={onSelectNote}
+                    />
+                )}
 
                 {/* ── Tags List (Below Title) ── */}
                 {note.tags && note.tags.length > 0 && (
@@ -530,6 +676,7 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault }: EditorP
                             noteId={noteId}
                             content={initialContent}
                             onSave={debouncedSaveContent}
+                            onSelectNote={onSelectNote}
                         />
                     </MilkdownProvider>
                 </div>

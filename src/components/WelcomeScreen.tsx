@@ -1,5 +1,5 @@
 import { isFileSystemSupported } from '../lib/vault';
-import { FolderOpen, Database, Cloud, FileText, ArrowRight } from 'lucide-react';
+import { FolderOpen, Database, Cloud, ArrowRight } from 'lucide-react';
 
 interface WelcomeScreenProps {
     onPickVault: () => void;
@@ -15,9 +15,11 @@ export default function WelcomeScreen({ onPickVault, onUseBrowserStorage, isPick
             <div className="flex flex-col items-center gap-8 max-w-lg w-full">
                 {/* Logo / Brand */}
                 <div className="flex flex-col items-center gap-3">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
-                        <FileText size={32} className="text-white" />
-                    </div>
+                    <img 
+                        src="keim_logo.png" 
+                        alt="Keim Logo" 
+                        className="w-20 h-20 rounded-2xl shadow-lg animate-in fade-in zoom-in duration-700"
+                    />
                     <h1 className="text-3xl font-bold text-dark-bg dark:text-light-bg tracking-tight">
                         Keim Notes
                     </h1>

@@ -1,17 +1,18 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { ENABLE_SMART_PROPS } from '../constants';
 import { db, type NoteItem } from '../lib/db';
 import { triggerAutoSync } from '../lib/sync';
 import {
     Folder, FolderOpen, FileText, Plus, Trash2, X, Check,
-    Settings, HardDrive, Globe, Cloud, CloudOff, AlertCircle, Search,
-    Tag, ChevronRight, ChevronDown, Lock, ArrowRight
+    Settings, HardDrive, Globe, Cloud, CloudOff, AlertCircle,
+    Tag, ChevronRight, ChevronDown, Lock, ArrowRight, Database, Edit2
 } from 'lucide-react';
 import type { SyncStatus } from '../App';
 
 interface SidebarProps {
     selectedNoteId: number | null;
-    onSelectNote: (id: number) => void;
+    onSelectNote: (id: number | null) => void;
     isOpen: boolean;
     onClose: () => void;
     onOpenSettings: () => void;
@@ -106,12 +107,6 @@ export default function Sidebar({
         return roots;
     }, [items, selectedTag]);
 
-    const handleAddAtRoot = (type: 'folder' | 'note') => {
-        if (type === 'note') onAddNote?.(0);
-        else onAddFolder?.(0);
-    };
-
-    const headerIconBtnClass = "p-2 md:p-1 hover:bg-light-bg dark:hover:bg-dark-bg rounded text-dark-bg dark:text-light-bg transition-colors";
 
     return (
         <>
@@ -125,49 +120,26 @@ export default function Sidebar({
             {/* Sidebar container - Universal Sliding Drawer */}
             <div
                 className={`
-                    fixed inset-y-0 left-0 z-50 h-full w-64 bg-light-ui dark:bg-dark-ui border-r border-light-bg dark:border-dark-bg flex flex-col
+                    fixed inset-y-0 left-0 z-50 h-full w-64 bg-light-ui/70 dark:bg-dark-ui/70 backdrop-blur-xl border-r border-black/5 dark:border-white/5 flex flex-col
                     transition-transform duration-300 ease-in-out
                     transform ${isOpen ? 'translate-x-0 shadow-2xl md:shadow-none' : '-translate-x-full'}
                 `}
             >
                 <div className="flex flex-col h-full">
+                    {/* Header spacer to maintain top margin & account for safe area, clearing the floating toggle button */}
                     <div
-                        className="p-4 flex items-center justify-end shrink-0"
+                        className="shrink-0 h-14 md:h-16 flex items-center px-4 gap-3"
                         style={{
-                            paddingTop: 'calc(1rem + var(--spacing-safe-top, 0px))',
-                            paddingLeft: 'calc(1rem + var(--spacing-safe-left, 0px))'
+                            paddingTop: 'var(--spacing-safe-top, 0px)',
+                            paddingLeft: 'var(--spacing-safe-left, 0px)'
                         }}
                     >
-                        <div className="flex gap-1 items-center shrink-0">
-                            <button
-                                onClick={() => {
-                                    // Manually dispatch the keydown event to trigger cmdk
-                                    document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyK', altKey: true }));
-                                }}
-                                className={headerIconBtnClass}
-                                title="Search Notes (Alt+K)"
-                            >
-                                <Search size={16} />
-                            </button>
-                            <button
-                                onClick={() => handleAddAtRoot('note')}
-                                className={headerIconBtnClass}
-                                title="Add Note"
-                            >
-                                <Plus size={16} />
-                            </button>
-                            <button
-                                onClick={() => handleAddAtRoot('folder')}
-                                className={headerIconBtnClass}
-                                title="Add Folder"
-                            >
-                                <Folder size={16} />
-                            </button>
-                        </div>
+                        <img src="keim_logo.png" alt="Keim Logo" className="w-8 h-8 rounded-lg shadow-sm" />
+                        <span className="font-bold text-lg tracking-tight text-dark-bg/80 dark:text-light-bg/80">Keim</span>
                     </div>
 
                     <div
-                        className="flex-1 overflow-y-auto py-2 scrollbar-hide"
+                        className="flex-1 overflow-y-auto py-2 scrollbar-hide flex flex-col"
                         onDragOver={(e) => {
                             e.preventDefault();
                             e.dataTransfer.dropEffect = 'move';
@@ -217,7 +189,16 @@ export default function Sidebar({
                             triggerAutoSync();
                         }}
                     >
-                        {tree.map(node => (
+                        <div 
+                            className="flex-1 min-h-full cursor-default"
+                            onClick={(e) => {
+                                // Only deselect if clicking the actual background container, not a child
+                                if (e.target === e.currentTarget) {
+                                    onSelectNote(null);
+                                }
+                            }}
+                        >
+                            {tree.map(node => (
                             <TreeNode
                                 key={node.id}
                                 item={node}
@@ -261,10 +242,10 @@ export default function Sidebar({
                                                     key={tag}
                                                     onClick={() => setSelectedTag(isSelected ? null : tag)}
                                                     className={`
-                                                        px-8 py-1.5 cursor-pointer text-sm flex items-center justify-between group
+                                                        mx-2 px-3 py-1.5 cursor-pointer text-sm flex items-center justify-between group rounded-md transition-all
                                                         ${isSelected
-                                                            ? 'bg-dark-bg/10 dark:bg-light-bg/10 text-dark-bg dark:text-light-bg font-medium'
-                                                            : 'text-dark-bg/70 dark:text-light-bg/70 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 hover:text-dark-bg dark:hover:text-light-bg'
+                                                            ? 'bg-white/50 dark:bg-white/10 text-dark-bg dark:text-light-bg font-semibold ring-1 ring-black/5 dark:ring-white/10 shadow-sm'
+                                                            : 'text-dark-bg/60 dark:text-light-bg/60 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 hover:text-dark-bg dark:hover:text-light-bg'
                                                         }
                                                     `}
                                                     title={`${tagCount} notes`}
@@ -280,31 +261,31 @@ export default function Sidebar({
                                 )}
                             </div>
                         )}
+                        </div>
                     </div>
 
                     {/* Bottom Status Bar */}
                     <div
-                        className="p-2 shrink-0 flex items-center justify-between"
+                        className="mx-2 mb-2 p-1.5 shrink-0 flex items-center justify-between bg-white/50 dark:bg-white/10 backdrop-blur-md rounded-xl border border-black/5 dark:border-white/5 shadow-sm ring-1 ring-black/5 dark:ring-white/10"
                         style={{
-                            paddingBottom: 'calc(0.5rem + var(--spacing-safe-bottom, 0px))',
-                            paddingLeft: 'calc(0.5rem + var(--spacing-safe-left, 0px))'
+                            marginBottom: 'calc(0.5rem + var(--spacing-safe-bottom, 0px))',
                         }}
                     >
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                             {/* Settings Icon-only button */}
                             <button
                                 onClick={onOpenSettings}
-                                className="p-1.5 rounded-md hover:bg-light-bg dark:hover:bg-dark-bg text-dark-bg dark:text-light-bg transition-colors shrink-0"
+                                className="p-1.5 rounded-lg hover:bg-dark-bg/10 dark:hover:bg-light-bg/10 text-dark-bg/70 dark:text-light-bg/70 transition-colors shrink-0"
                                 title="Settings"
                             >
-                                <Settings size={16} className="opacity-70" />
+                                <Settings size={16} strokeWidth={1.5} />
                             </button>
                             {/* Storage type icon */}
                             <div
-                                className="flex items-center justify-center p-1.5 rounded-md text-dark-bg/60 dark:text-light-bg/60"
+                                className="flex items-center justify-center p-1.5 rounded-lg text-dark-bg/40 dark:text-light-bg/40"
                                 title={storageMode === 'vault' ? 'Local Vault' : 'Browser Storage'}
                             >
-                                {storageMode === 'vault' ? <HardDrive size={16} /> : <Globe size={16} />}
+                                {storageMode === 'vault' ? <HardDrive size={16} strokeWidth={1.5} /> : <Globe size={16} strokeWidth={1.5} />}
                             </div>
                         </div>
 
@@ -338,7 +319,7 @@ export default function Sidebar({
 interface TreeNodeProps {
     item: NoteItem & { children: Array<NoteItem> };
     selectedId: number | null;
-    onSelect: (id: number) => void;
+    onSelect: (id: number | null) => void;
     level: number;
     onAddNote?: (parentId: number) => void;
     onAddFolder?: (parentId: number) => void;
@@ -348,6 +329,35 @@ interface TreeNodeProps {
 function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder, onDeleteItem }: TreeNodeProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+
+    const isSmartFolder = useLiveQuery(() => item.type === 'folder' && ENABLE_SMART_PROPS ? db.smartSchemas.where({ folderId: item.id }).count().then(c => c > 0) : false, [item.id, item.type]);
+    const [contextMenu, setContextMenu] = useState<{x:number, y:number} | null>(null);
+
+    // Long-press detection for mobile
+    const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        if (isRenaming) return;
+        const touch = e.touches[0];
+        pressTimer.current = setTimeout(() => {
+            setContextMenu({ x: touch.clientX, y: Math.min(touch.clientY, window.innerHeight - 200) });
+            // Vibrate if supported
+            if (navigator.vibrate) navigator.vibrate(50);
+        }, 500); // 500ms long press
+    };
+
+    const cancelPress = () => {
+        if (pressTimer.current) {
+            clearTimeout(pressTimer.current);
+            pressTimer.current = null;
+        }
+    };
+
+    useEffect(() => {
+        const handleClickOutside = () => setContextMenu(null);
+        if (contextMenu) document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [contextMenu]);
 
     // Auto-expand if the selected note is a child of this folder
     useEffect(() => {
@@ -386,6 +396,32 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder, o
     }, [item.id]);
 
     useEffect(() => {
+        const handlePrepareDelete = (e: CustomEvent) => {
+            if (e.detail === item.id) {
+                setIsConfirmingDelete(true);
+            }
+        };
+        window.addEventListener('keim_prepare_delete', handlePrepareDelete as EventListener);
+        return () => window.removeEventListener('keim_prepare_delete', handlePrepareDelete as EventListener);
+    }, [item.id]);
+
+    useEffect(() => {
+        if (!isConfirmingDelete) return;
+
+        const handleConfirmKeys = (e: KeyboardEvent) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleConfirmDelete();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setIsConfirmingDelete(false);
+            }
+        };
+        window.addEventListener('keydown', handleConfirmKeys);
+        return () => window.removeEventListener('keydown', handleConfirmKeys);
+    }, [isConfirmingDelete]);
+
+    useEffect(() => {
         if (isRenaming && inputRef.current) {
             setRenameValue(item.title);
             inputRef.current.focus();
@@ -394,7 +430,6 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder, o
     }, [isRenaming, item.title]);
 
     const paddingLeft = `${(level * 12) + 16}px`;
-    const actionBtnClass = "hover:scale-110 p-1.5 md:p-0.5 rounded transition-transform opacity-100 md:opacity-70 hover:opacity-100 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5";
 
     const handleAddChild = (e: React.MouseEvent, type: 'folder' | 'note') => {
         e.stopPropagation();
@@ -403,27 +438,18 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder, o
         else onAddFolder?.(item.id!);
     };
 
-    const handleDeleteClick = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        setIsConfirmingDelete(true);
-    };
 
-    const cancelDelete = (e: React.MouseEvent) => {
-        e.stopPropagation();
+    const cancelDelete = (e?: React.MouseEvent) => {
+        e?.stopPropagation();
         setIsConfirmingDelete(false);
     };
 
-    const confirmDelete = async (e: React.MouseEvent) => {
-        e.stopPropagation();
+    const handleConfirmDelete = async () => {
         setIsConfirmingDelete(false);
         const { deleteItem, db: appDb, getItemPath } = await import('../lib/db');
         const { removeFromSearchIndex } = await import('../lib/search');
 
         // ── Step 1: Physical vault delete BEFORE soft-delete in Dexie ──────────
-        // We must resolve the vault path while the item is still present and
-        // non-deleted in the DB. On Android, also check QueryPermission first —
-        // if the vault is locked the delete silently succeeds in Dexie but we
-        // skip the disk op rather than throwing a confusing NotAllowedError.
         const { getStorageMode, deleteFromVault, notePathFromTitle, getVaultHandle } = await import('../lib/vault');
         if (getStorageMode() === 'vault') {
             const allItems = await appDb.items.toArray();
@@ -442,23 +468,24 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder, o
                     console.warn('Could not remove from vault (may already be deleted):', err);
                 }
             } else {
-                // Vault is locked on Android — the .md file will be cleaned up
-                // automatically the next time the vault is unlocked and reloaded.
                 console.info(`Vault locked: skipping physical delete of "${vaultPath}". Will be removed on next vault access.`);
             }
         }
 
-        // ── Step 2: Soft-delete in Dexie (tombstone for cloud sync) ─────────────
+        // ── Step 2: Soft delete in DB ──
         await deleteItem(item.id!);
         if (item.type === 'note') {
-            await removeFromSearchIndex(item.id!);
+            removeFromSearchIndex(item.id!);
         }
-        localStorage.setItem('keim_has_user_edits', 'true');
-
-        // Push the deletion tombstone to Dropbox immediately
-        triggerAutoSync();
-
+        
         onDeleteItem?.(item.id!);
+        localStorage.setItem('keim_has_user_edits', 'true');
+        triggerAutoSync();
+    };
+
+    const confirmDelete = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        handleConfirmDelete();
     };
 
     const handleRenameSubmit = async () => {
@@ -681,10 +708,10 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder, o
     };
 
     const isSelected = selectedId === item.id;
-    const baseClasses = `group flex items-center justify-between py-2 pr-2 cursor-pointer select-none transition-all duration-200 border-l-2`;
+    const baseClasses = `group flex items-center justify-between py-2 pr-2 mx-2 rounded-lg cursor-pointer select-none transition-all duration-200`;
     let selectedClasses = isSelected
-        ? 'bg-dark-bg/10 dark:bg-light-bg/10 border-dark-bg dark:border-light-bg text-dark-bg dark:text-light-bg font-semibold'
-        : 'border-transparent text-dark-bg/70 dark:text-light-bg/70 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 hover:text-dark-bg dark:hover:text-light-bg';
+        ? 'bg-white/50 dark:bg-white/10 text-dark-bg dark:text-light-bg font-semibold ring-1 ring-black/5 dark:ring-white/10 shadow-sm'
+        : 'text-dark-bg/70 dark:text-light-bg/70 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 hover:text-dark-bg dark:hover:text-light-bg';
 
     if (dragOverKind === 'inside') {
         selectedClasses += ' bg-indigo-500/10 border-indigo-500 ring-2 ring-indigo-500/20';
@@ -699,11 +726,26 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder, o
             <div
                 className={`${baseClasses} ${selectedClasses}`}
                 style={{ paddingLeft }}
-                onClick={() => {
+                onClick={(e) => {
                     if (isRenaming) return;
+                    if (contextMenu) {
+                        setContextMenu(null);
+                        e.stopPropagation();
+                        return;
+                    }
                     if (item.type === 'folder') setIsOpen(!isOpen);
                     else onSelect(item.id!);
                 }}
+                onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Prevent context menu from going off bottom of screen
+                    setContextMenu({ x: e.clientX, y: Math.min(e.clientY, window.innerHeight - 200) });
+                }}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={cancelPress}
+                onTouchMove={cancelPress}
+                onContextMenuCapture={(e) => e.preventDefault()}
                 onDoubleClick={(e) => {
                     e.stopPropagation();
                     setIsRenaming(true);
@@ -718,7 +760,10 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder, o
                     {item.icon ? (
                         <span className="text-base leading-none flex-shrink-0">{item.icon}</span>
                     ) : item.type === 'folder' ? (
-                        isOpen ? <FolderOpen size={16} className="opacity-80 flex-shrink-0" /> : <Folder size={16} className="opacity-80 flex-shrink-0" />
+                        <div className="relative flex-shrink-0">
+                            {isOpen ? <FolderOpen size={16} className="opacity-80 flex-shrink-0" /> : <Folder size={16} className="opacity-80 flex-shrink-0" />}
+                            {isSmartFolder && <Database size={8} className="absolute -bottom-0.5 -right-1 text-indigo-500 drop-shadow-sm" />}
+                        </div>
                     ) : (
                         <FileText size={16} className="opacity-80 flex-shrink-0" />
                     )}
@@ -738,24 +783,10 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder, o
                     )}
                 </div>
 
-                {!isRenaming && (
-                    <div className="flex items-center gap-2 md:gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity ml-2 shrink-0 pointer-events-auto">
-                        {isConfirmingDelete ? (
-                            <div className="flex items-center gap-1 bg-red-500/10 px-1 rounded">
-                                <button onClick={confirmDelete} className="text-red-600 dark:text-red-400 p-1.5 hover:scale-110" title="Confirm Delete"><Check size={14} /></button>
-                                <button onClick={cancelDelete} className="text-dark-bg dark:text-light-bg opacity-70 p-1.5 hover:scale-110" title="Cancel"><X size={14} /></button>
-                            </div>
-                        ) : (
-                            <>
-                                {item.type === 'folder' && (
-                                    <>
-                                        <button onClick={(e) => handleAddChild(e, 'note')} className={actionBtnClass} title="Add Note"><Plus size={14} /></button>
-                                        <button onClick={(e) => handleAddChild(e, 'folder')} className={actionBtnClass} title="Add Subfolder"><Folder size={14} /></button>
-                                    </>
-                                )}
-                                <button onClick={handleDeleteClick} className={`${actionBtnClass} hover:text-red-500 hover:bg-red-500/10 dark:hover:bg-red-500/10`} title="Delete"><Trash2 size={14} /></button>
-                            </>
-                        )}
+                {!isRenaming && isConfirmingDelete && (
+                    <div className="flex items-center gap-1 bg-red-500/10 px-1 rounded ml-2 shrink-0 pointer-events-auto">
+                        <button onClick={confirmDelete} className="text-red-600 dark:text-red-400 p-1.5 hover:scale-110" title="Confirm Delete"><Check size={14} /></button>
+                        <button onClick={cancelDelete} className="text-dark-bg dark:text-light-bg opacity-70 p-1.5 hover:scale-110" title="Cancel"><X size={14} /></button>
                     </div>
                 )}
             </div>
@@ -776,6 +807,83 @@ function TreeNode({ item, selectedId, onSelect, level, onAddNote, onAddFolder, o
                     )}
                 </div>
             )}
+
+            {contextMenu && (
+                <div 
+                    className="fixed z-[100] bg-light-bg/85 dark:bg-[#1a1a1f]/80 backdrop-blur-xl border border-black/5 dark:border-white/10 ring-1 ring-black/5 dark:ring-white/10 shadow-2xl rounded-xl py-1.5 text-sm font-medium w-52 animate-in fade-in zoom-in-95 duration-100"
+                    style={{ top: contextMenu.y, left: contextMenu.x }}
+                    onMouseDown={e => e.stopPropagation()}
+                    onClick={e => e.stopPropagation()}
+                >
+                    {item.type === 'folder' && (
+                        <>
+                            <button 
+                                className="w-full text-left px-3 py-2 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 flex items-center gap-2.5 text-dark-bg dark:text-light-bg"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setContextMenu(null);
+                                    handleAddChild(e, 'note');
+                                }}
+                            >
+                                <Plus size={14} className="opacity-70" />
+                                Add Note
+                            </button>
+                            <button 
+                                className="w-full text-left px-3 py-2 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 flex items-center gap-2.5 text-dark-bg dark:text-light-bg"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setContextMenu(null);
+                                    handleAddChild(e, 'folder');
+                                }}
+                            >
+                                <Folder size={14} className="opacity-70" />
+                                Add Folder
+                            </button>
+                            
+                            {ENABLE_SMART_PROPS && (
+                                <button 
+                                    className="w-full text-left px-3 py-2 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 flex items-center gap-2.5 text-dark-bg dark:text-light-bg"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setContextMenu(null);
+                                        window.dispatchEvent(new CustomEvent('keim_open_smart_folder_popup', { detail: { folderId: item.id, folderTitle: item.title } }));
+                                    }}
+                                >
+                                    <Database size={14} className="text-indigo-500" />
+                                    {isSmartFolder ? 'Edit Smart Folder' : 'Make Smart'}
+                                </button>
+                            )}
+                            
+                            <div className="h-px bg-light-border dark:bg-dark-border my-1" />
+                        </>
+                    )}
+                    
+                    <button 
+                        className="w-full text-left px-3 py-2 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 flex items-center gap-2.5 text-dark-bg dark:text-light-bg"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setContextMenu(null);
+                            setIsRenaming(true);
+                        }}
+                    >
+                        <Edit2 size={14} className="opacity-70" />
+                        Rename
+                    </button>
+
+                    <button 
+                        className="w-full text-left px-3 py-2 hover:bg-red-500/10 flex items-center gap-2.5 text-red-600 dark:text-red-400 group"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setContextMenu(null);
+                            setIsConfirmingDelete(true);
+                        }}
+                    >
+                        <Trash2 size={14} className="group-hover:scale-110 transition-transform" />
+                        Delete
+                    </button>
+                </div>
+            )}
+
         </div>
     );
 }
@@ -804,20 +912,20 @@ function SyncStatusBadge({ status, lastSyncTime, onSync }: { status: SyncStatus,
     if (status === 'disconnected') {
         colorClass = 'text-dark-bg/30 dark:text-light-bg/30';
         content = (
-            <CloudOff size={16} />
+            <CloudOff size={16} strokeWidth={1.5} />
         );
     } else if (status === 'error') {
         colorClass = 'text-amber-500';
         content = (
             <>
-                <AlertCircle size={16} />
+                <AlertCircle size={16} strokeWidth={1.5} />
                 <span className="text-[10px] font-medium tracking-wide leading-none">Error</span>
             </>
         );
     } else if (status === 'syncing') {
         colorClass = 'text-[#F44E2C]';
         content = (
-            <div className="flex items-center justify-center gap-[3px] px-1 h-3">
+            <div className="flex items-center justify-center gap-[3px] px-1 h-4">
                 <div className="w-1.5 h-1.5 bg-[#F44E2C] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
                 <div className="w-1.5 h-1.5 bg-[#F44E2C] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
                 <div className="w-1.5 h-1.5 bg-[#F44E2C] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
@@ -827,7 +935,7 @@ function SyncStatusBadge({ status, lastSyncTime, onSync }: { status: SyncStatus,
         colorClass = 'text-emerald-500';
         content = (
             <>
-                <Check size={16} strokeWidth={3} />
+                <Check size={16} strokeWidth={2} />
                 <span className="text-[10px] font-bold uppercase tracking-wider leading-none">Synced</span>
             </>
         );
@@ -836,7 +944,7 @@ function SyncStatusBadge({ status, lastSyncTime, onSync }: { status: SyncStatus,
         colorClass = 'text-dark-bg/60 dark:text-light-bg/60';
         content = (
             <>
-                {status === 'synced' ? <Check size={16} strokeWidth={2} className="opacity-70" /> : <Cloud size={16} className="opacity-70" />}
+                {status === 'synced' ? <Check size={16} strokeWidth={1.5} className="opacity-70" /> : <Cloud size={16} strokeWidth={1.5} className="opacity-70" />}
                 {timeString && <span className="text-[10px] font-medium tracking-wide leading-none opacity-80">{timeString}</span>}
             </>
         );
@@ -856,7 +964,7 @@ function SyncStatusBadge({ status, lastSyncTime, onSync }: { status: SyncStatus,
                 if (status !== 'syncing') onSync?.();
             }}
             disabled={status === 'syncing'}
-            className={`flex items-center h-7 px-2 gap-1.5 rounded-md hover:bg-dark-bg/10 dark:hover:bg-light-bg/10 transition-colors shrink-0 ${colorClass}`}
+            className={`flex items-center h-[28px] md:h-[26px] px-2 gap-1.5 rounded-lg hover:bg-dark-bg/10 dark:hover:bg-light-bg/10 transition-colors shrink-0 ${colorClass}`}
             title={tooltip}
         >
             {content}

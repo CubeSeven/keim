@@ -1,5 +1,22 @@
 import Dexie, { type Table } from 'dexie';
 
+// --- Smart Properties Types ---
+
+export type FieldType = 'text' | 'number' | 'date' | 'link' | 'checkbox' | 'select' | 'relation';
+
+export interface SmartField {
+    name: string;
+    type: FieldType;
+    /** Used strictly by 'select' fields to provide dropdown options */
+    options?: string[];
+}
+
+export interface SmartSchema {
+    id?: number;
+    folderId: number; // The NoteItem id of the parent folder
+    fields: SmartField[];
+}
+
 export interface NoteItem {
     id?: number;
     parentId: number; // 0 for root level
@@ -21,12 +38,18 @@ export interface NoteContent {
 export class NotesDatabase extends Dexie {
     items!: Table<NoteItem, number>;
     contents!: Table<NoteContent, number>;
+    smartSchemas!: Table<SmartSchema, number>;
 
     constructor() {
         super('NotesDatabase');
         this.version(2).stores({
-            items: '++id, parentId, type, title, *tags, updated_at',
+            items: '++id, parentId, type, title, *tags, updated_at, [type+title], [parentId+type]',
             contents: 'id'
+        });
+        this.version(3).stores({
+            items: '++id, parentId, type, title, *tags, updated_at, [type+title], [parentId+type]',
+            contents: 'id',
+            smartSchemas: '++id, &folderId'
         });
     }
 }
@@ -69,7 +92,7 @@ export async function deleteItem(id: number): Promise<void> {
     // Soft delete to handle sync — keep content for recovery in case
     // sync later determines the deletion was wrong (e.g., another device
     // updated the note). Content is only truly purged during sync cleanup.
-    return db.transaction('rw', db.items, db.contents, async () => {
+    return db.transaction('rw', db.items, db.contents, db.smartSchemas, async () => {
         const item = await db.items.get(id);
         if (!item) return;
 
@@ -81,6 +104,7 @@ export async function deleteItem(id: number): Promise<void> {
         }
 
         await db.items.update(id, { isDeleted: true, updated_at: Date.now() });
+        await db.smartSchemas.where({ folderId: id }).delete();
         // NOTE: Content is intentionally preserved here for sync safety.
         // It will be cleaned up after sync confirms the deletion propagated.
     });
