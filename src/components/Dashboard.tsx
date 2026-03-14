@@ -45,6 +45,86 @@ const baseInput: React.CSSProperties = {
     fontSize: 'inherit', color: 'inherit', fontFamily: 'inherit', minWidth: 0,
 };
 
+/**
+ * CellInput — key-remount strategy for live sync + stable cursor.
+ *
+ * The `key` prop is driven by `value` (the external DB-backed value).
+ * - While user types: `notes` state is unchanged → same key → no remount → cursor stable
+ * - When external update arrives (Dashboard event or PropertiesHeader sync):
+ *     `notes` state changes → new key → input remounts with fresh `defaultValue` ✅
+ *
+ * This is the simplest approach that is immune to React StrictMode, TanStack
+ * re-renders, and async useEffect timing issues — because there are no refs
+ * or effects at all.
+ */
+const CellInput = ({
+    value,
+    type,
+    onSave,
+    placeholder,
+    className,
+    style,
+    title,
+}: {
+    value: string;
+    type: string;
+    onSave: (val: string) => void;
+    placeholder?: string;
+    className?: string;
+    style?: React.CSSProperties;
+    title?: string;
+}) => {
+    // URL display mode (clickable link)
+    const [editingUrl, setEditingUrl] = useState(false);
+    const isUrl = type === 'text' && value.match(/^https?:\/\/[^\s]+$/i);
+
+    if (isUrl && !editingUrl) {
+        return (
+            <div className="flex items-center justify-between group/link w-full" style={style}>
+                <a href={value} target="_blank" rel="noreferrer"
+                    className="text-indigo-500 hover:underline truncate px-1" title={value}>
+                    {value}
+                </a>
+                <button onClick={(e) => { e.stopPropagation(); setEditingUrl(true); }}
+                    className="opacity-0 group-hover/link:opacity-100 text-dark-bg/40 hover:text-dark-bg/80 dark:text-light-bg/40 dark:hover:text-light-bg/80 px-1 shrink-0 transition-opacity"
+                    title="Edit link">✎
+                </button>
+            </div>
+        );
+    }
+
+    return (
+        <input
+            key={value}          // ← remounts when external DB value changes (live sync)
+            type={type}
+            defaultValue={value} // ← uncontrolled: user typing never causes re-renders
+            placeholder={placeholder}
+            onBlur={(e) => {
+                const newVal = e.target.value;
+                if (newVal !== value) {
+                    setTimeout(() => onSave(newVal), 20); // slightly longer delay for Firefox stability
+                }
+                if (editingUrl) setEditingUrl(false);
+            }}
+            onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur();
+            }}
+            onChange={(e) => {
+                // Firefox spinner clicks don't focus the input natively! Force it here
+                // so that clicking away later successfully triggers the blur event.
+                if (document.activeElement !== e.target) {
+                    e.target.focus();
+                }
+            }}
+            autoFocus={editingUrl}
+            style={style}
+            className={className}
+            title={title}
+        />
+    );
+};
+
 const HP = '11px 18px'; // header padding
 const CP = '10px 18px'; // cell padding
 const BD = '1px solid rgba(128,128,128,0.12)';
@@ -85,24 +165,51 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
 
 
     const handleCellChange = useCallback(async (noteId: number, key: string, val: string) => {
-        setNotes(prev => prev.map(n => n.item.id === noteId ? { ...n, meta: { ...n.meta, [key]: val } } : n));
-        const target = notes.find(n => n.item.id === noteId);
-        if (!target) return;
-        const newMeta    = { ...target.meta, [key]: val };
-        const newContent = serializeYamlFrontmatter(newMeta, parseYamlFrontmatter(target.rawContent).body);
+        const contentObj = await db.contents.get(noteId);
+        const targetItem = await db.items.get(noteId);
+        if (!contentObj || !targetItem) return;
+
+        const currentRaw = contentObj.content;
+        const parsed = parseYamlFrontmatter(currentRaw);
+        const newMeta = { ...parsed.meta, [key]: val };
+        const newContent = serializeYamlFrontmatter(newMeta, parsed.body);
+
         await db.contents.put({ id: noteId, content: newContent });
         await db.items.update(noteId, { updated_at: Date.now() });
+        
+        setNotes(prev => prev.map(n => n.item.id === noteId ? { ...n, meta: newMeta, rawContent: newContent } : n));
+
         const allItems = await db.items.toArray();
         const fullPath = getFullPath(noteId, allItems);
-        updateSearchIndex(noteId, target.item.title, newContent, target.item.parentId, fullPath, target.item.icon, target.item.tags);
+        updateSearchIndex(noteId, targetItem.title, newContent, targetItem.parentId, fullPath, targetItem.icon, targetItem.tags);
+        
         if (getStorageMode() === 'vault') {
-            const pp = getFullPath(target.item.parentId, allItems);
-            writeNoteToVault(notePathFromTitle(target.item.title, pp), newContent).catch(console.warn);
+            const pp = getFullPath(targetItem.parentId, allItems);
+            writeNoteToVault(notePathFromTitle(targetItem.title, pp), newContent).catch(console.warn);
         }
+        
         localStorage.setItem('keim_has_user_edits', 'true');
         triggerAutoSync();
-        setNotes(prev => prev.map(n => n.item.id === noteId ? { ...n, rawContent: newContent } : n));
-    }, [notes]);
+
+        window.dispatchEvent(new CustomEvent('keim_note_content_updated', {
+            detail: { noteId, newContent }
+        }));
+    }, []);
+
+    useEffect(() => {
+        const handleNoteUpdated = ((e: CustomEvent) => {
+            const { noteId: updatedId, newContent } = e.detail;
+            
+            setNotes(prev => {
+                const existing = prev.find(n => n.item.id === updatedId);
+                if (!existing || existing.rawContent === newContent) return prev;
+                const { meta } = parseYamlFrontmatter(newContent);
+                return prev.map(n => n.item.id === updatedId ? { ...n, meta, rawContent: newContent } : n);
+            });
+        }) as EventListener;
+        window.addEventListener('keim_note_content_updated', handleNoteUpdated);
+        return () => window.removeEventListener('keim_note_content_updated', handleNoteUpdated);
+    }, []);
 
     const handleAddNote = async () => {
       if (!targetFolder?.id) return;
@@ -166,13 +273,13 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
                     const val = info.getValue() as string;
                     
                     if (f.type === 'date') {
-                        return <input type="date" value={val}
-                                onChange={e => handleCellChange(row.item.id!, f.name, e.target.value)}
+                        return <CellInput type="date" value={val}
+                                onSave={(newVal: string) => handleCellChange(row.item.id!, f.name, newVal)}
                                 style={{ ...baseInput, padding: CP, display: 'block' }}
                                 className="text-dark-bg/80 dark:text-light-bg/80 w-full bg-transparent" />;
                     } else if (f.type === 'number') {
-                        return <input type="number" value={val} placeholder="—"
-                                onChange={e => handleCellChange(row.item.id!, f.name, e.target.value)}
+                        return <CellInput type="number" value={val} placeholder="—"
+                                onSave={(newVal: string) => handleCellChange(row.item.id!, f.name, newVal)}
                                 style={{ ...baseInput, padding: CP, display: 'block' }}
                                 className="text-dark-bg/80 dark:text-light-bg/80 w-full bg-transparent" />;
                     } else if (f.type === 'checkbox') {
@@ -207,8 +314,8 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
                                 ) : <span style={{ opacity: 0.25 }}>—</span>}
                             </div>;
                     } else {
-                        return <input type="text" value={val} placeholder="—"
-                                onChange={e => handleCellChange(row.item.id!, f.name, e.target.value)}
+                        return <CellInput type="text" value={val} placeholder="—"
+                                onSave={(newVal: string) => handleCellChange(row.item.id!, f.name, newVal)}
                                 style={{ ...baseInput, padding: CP, display: 'block' }}
                                 className="text-dark-bg/80 dark:text-light-bg/80 w-full bg-transparent"
                                 title={val} />;

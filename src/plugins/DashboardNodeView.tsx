@@ -36,10 +36,26 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
                 </button>
             </div>
 
-            <div contentEditable={false} className="select-none">
+            <div 
+                contentEditable={false}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                onKeyUp={(e) => e.stopPropagation()}
+                onKeyPress={(e) => e.stopPropagation()}
+                onCut={(e) => e.stopPropagation()}
+                onCopy={(e) => e.stopPropagation()}
+                onPaste={(e) => e.stopPropagation()}
+                onDragStart={(e) => e.stopPropagation()}
+                onDrop={(e) => e.stopPropagation()}
+                onBeforeInput={(e) => e.stopPropagation()}
+            >
                 <Dashboard folderName={folderName} onSelectNote={onSelectNote} />
             </div>
             <div className="h-4 invisible" />
+
+
         </div>
     );
 };

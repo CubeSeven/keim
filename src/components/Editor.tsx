@@ -187,7 +187,9 @@ function CrepeBodyInner({ content, noteId, onSave, onSelectNote }: CrepeBodyProp
                 .use(remarkDirectivePlugin)
                 .use(dashboardNode)
                 .use($view(dashboardNode.node, () => factory({ 
-                    component: () => <DashboardNodeView onSelectNote={(id) => onSelectNoteRef.current(id)} /> 
+                    component: () => <DashboardNodeView onSelectNote={(id) => onSelectNoteRef.current(id)} />,
+                    stopEvent: () => true, // Tell ProseMirror to completely ignore all DOM events inside this node
+                    ignoreMutation: () => true // Tell ProseMirror to ignore all DOM changes inside React
                 })))
                 .use(listener);
 
@@ -374,7 +376,22 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
             }
         }) as EventListener;
         window.addEventListener('keim_sync_complete', handleSyncComplete);
-        return () => window.removeEventListener('keim_sync_complete', handleSyncComplete);
+
+        const handleNoteUpdated = ((e: CustomEvent) => {
+            const { noteId: editedId, newContent } = e.detail;
+            
+            console.log(`[Editor] Received keim_note_content_updated for note ${editedId}. Current active note is ${noteId}`);
+            
+            // Always update global buffer so if the user opens this note later, it's fresh.
+            // PropertiesHeader manages its own meta state by listening to the event directly.
+            contentBuffer.set(editedId, newContent);
+        }) as EventListener;
+        window.addEventListener('keim_note_content_updated', handleNoteUpdated);
+
+        return () => {
+            window.removeEventListener('keim_sync_complete', handleSyncComplete);
+            window.removeEventListener('keim_note_content_updated', handleNoteUpdated);
+        };
     }, [noteId]);
 
     useEffect(() => {
@@ -412,6 +429,11 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
     const debouncedSaveContent = useCallback(
         (markdown: string) => {
             pendingSaveRef.current = markdown;
+
+            // Sync contentBuffer immediately for cross-component consistency
+            // NOTE: PropertiesHeader dispatches keim_note_content_updated itself;
+            // the Milkdown body editor does NOT need to dispatch for plain typing
+            // (it affects body text, not properties).
             if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
             saveTimeoutRef.current = window.setTimeout(() => {
                 pendingSaveRef.current = null;
@@ -643,6 +665,7 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
                     <PropertiesHeader 
                         schema={smartSchema}
                         content={initialContent}
+                        noteId={noteId}
                         onUpdateContent={(nc) => {
                             contentBuffer.set(noteId, nc);
                             debouncedSaveContent(nc);

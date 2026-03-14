@@ -11,6 +11,7 @@ import * as Popover from '@radix-ui/react-popover';
 interface PropertiesHeaderProps {
     schema: SmartSchema;
     content: string;
+    noteId: number;          // NEW: for direct event listener
     onUpdateContent: (newContent: string) => void;
     onSelectNote?: (id: number) => void;
 }
@@ -25,15 +26,34 @@ const TYPE_ICON: Record<string, React.ElementType> = {
     text:     Type,
 };
 
-export default function PropertiesHeader({ schema, content, onUpdateContent, onSelectNote }: PropertiesHeaderProps) {
+export default function PropertiesHeader({ schema, content, noteId, onUpdateContent, onSelectNote }: PropertiesHeaderProps) {
     const [meta, setMeta] = useState<Record<string, string>>({});
     const [relOpen, setRelOpen]     = useState<string | null>(null);
     const [relQuery, setRelQuery]   = useState('');
     const [relResults, setRelResults] = useState<SearchResult[]>([]);
 
+    // Sync meta whenever the content prop changes (e.g. when the Editor's buffer updates)
     useEffect(() => {
         setMeta(parseYamlFrontmatter(content).meta);
     }, [content]);
+
+    // Direct live sync: listen for updates to this specific note from Dashboard table edits.
+    // This runs IMMEDIATELY upon the event, before the Dexie DB live query fires,
+    // so the user sees zero-latency updates in the note properties.
+    useEffect(() => {
+        const handleNoteUpdated = ((e: CustomEvent) => {
+            const { noteId: updatedId, newContent, source } = e.detail;
+            if (updatedId !== noteId) return;
+            // Ignore our own dispatches (we already updated meta via handleChange)
+            if (source === 'properties_header') return;
+            const { meta: newMeta } = parseYamlFrontmatter(newContent);
+            console.log('[PropertiesHeader] Received live update for note', noteId, 'new meta:', newMeta);
+            setMeta(newMeta);
+        }) as EventListener;
+
+        window.addEventListener('keim_note_content_updated', handleNoteUpdated);
+        return () => window.removeEventListener('keim_note_content_updated', handleNoteUpdated);
+    }, [noteId]);
 
     useEffect(() => {
         if (!relOpen || !relQuery.trim()) { setRelResults([]); return; }
@@ -45,7 +65,12 @@ export default function PropertiesHeader({ schema, content, onUpdateContent, onS
         const newMeta    = { ...meta, [key]: value };
         setMeta(newMeta);
         const parsed    = parseYamlFrontmatter(content);
-        onUpdateContent(serializeYamlFrontmatter(newMeta, parsed.body));
+        const newContent = serializeYamlFrontmatter(newMeta, parsed.body);
+        // Dispatch event so Dashboard tables for THIS note update live
+        window.dispatchEvent(new CustomEvent('keim_note_content_updated', {
+            detail: { noteId, newContent, source: 'properties_header' }
+        }));
+        onUpdateContent(newContent);
     };
 
     if (!schema.fields.length) return null;
