@@ -8,6 +8,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import SidebarNode from './SidebarNode';
 import { Settings, HardDrive, Globe, Cloud, CloudOff, AlertCircle, Tag, ChevronRight, ChevronDown, Lock, ArrowRight, Check, X } from 'lucide-react';
 import type { SyncStatus } from '../App';
+import { mirage } from 'ldrs';
+mirage.register();
 
 interface SidebarProps {
     onOpenSettings: () => void;
@@ -276,7 +278,7 @@ function SyncStatusBadge({ status, lastSyncTime, onSync }: { status: SyncStatus,
 
     if (status === 'disconnected') { colorClass = 'text-dark-bg/30'; content = <CloudOff size={16} strokeWidth={1.5} />; }
     else if (status === 'error') { colorClass = 'text-amber-500'; content = <><AlertCircle size={16} strokeWidth={1.5} /><span className="text-[10px] font-medium tracking-wide leading-none">Error</span></>; }
-    else if (status === 'syncing') { colorClass = 'text-[#F44E2C]'; content = <div className="flex items-center justify-center gap-[3px] px-1 h-4"><div className="w-1.5 h-1.5 bg-[#F44E2C] rounded-full animate-bounce"></div><div className="w-1.5 h-1.5 bg-[#F44E2C] rounded-full animate-bounce"></div><div className="w-1.5 h-1.5 bg-[#F44E2C] rounded-full animate-bounce"></div></div>; }
+    else if (status === 'syncing') { colorClass = 'text-[#F44E2C]'; content = <div className="flex items-center justify-center px-1 h-4"><l-mirage size="20" speed="2.5" color="currentColor" /></div>; }
     else if (status === 'synced' && showSuccess) { colorClass = 'text-emerald-500'; content = <><Check size={16} strokeWidth={2} /><span className="text-[10px] font-bold uppercase tracking-wider leading-none">Synced</span></>; }
     else { colorClass = 'text-dark-bg/60'; content = <>{status === 'synced' ? <Check size={16} strokeWidth={1.5} className="opacity-70" /> : <Cloud size={16} strokeWidth={1.5} className="opacity-70" />}{timeString && <span className="text-[10px] font-medium opacity-80">{timeString}</span>}</>; }
 

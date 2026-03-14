@@ -5,6 +5,8 @@ import { APP_VERSION } from '../constants';
 import { isFileSystemSupported } from '../lib/vault';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { mirage } from 'ldrs';
+mirage.register();
 
 const DropboxIcon = ({ className }: { className?: string }) => (
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
@@ -462,7 +464,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                                 disabled={syncing}
                                                                 className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-semibold bg-dark-bg text-light-bg dark:bg-light-bg dark:text-dark-bg hover:opacity-90 transition-all disabled:opacity-50"
                                                             >
-                                                                <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
+                                                                {syncing ? <l-mirage size="18" speed="2.5" color="currentColor" /> : <RefreshCw size={16} />}
                                                                 {syncing ? 'Syncing…' : 'Sync Now'}
                                                             </button>
                                                             <button
@@ -482,7 +484,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                             disabled={syncing}
                                                             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-semibold bg-[#0061FF] text-white hover:bg-[#0051d6] transition-all disabled:opacity-50"
                                                         >
-                                                            {syncing ? <RefreshCw size={16} className="animate-spin" /> : <DropboxIcon className="w-5 h-5" />}
+                                                            {syncing ? <l-mirage size="20" speed="2.5" color="currentColor" /> : <DropboxIcon className="w-5 h-5" />}
                                                             {syncing ? 'Connecting…' : 'Connect with Dropbox'}
                                                         </button>
                                                     </>

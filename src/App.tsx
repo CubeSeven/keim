@@ -14,9 +14,12 @@ const WelcomeScreen = lazy(() => import('./components/WelcomeScreen'));
 const CommandPalette = lazy(() => import('./components/CommandPalette').then(mod => ({ default: mod.CommandPalette })));
 const SmartFolderPopup = lazy(() => import('./components/SmartFolderPopup'));
 
+import { mirage } from 'ldrs';
+mirage.register();
+
 const FallbackSpinner = () => (
   <div className="flex w-full h-full items-center justify-center p-8">
-    <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+    <l-mirage size="40" speed="2.5" color="rgb(99 102 241)" />
   </div>
 );
 import { useAppStore } from './store';
@@ -160,7 +163,7 @@ function App() {
   if (appState === 'loading') {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-light-bg dark:bg-dark-bg">
-        <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+        <l-mirage size="40" speed="2.5" color="rgb(99 102 241)" />
       </div>
     );
   }
@@ -180,7 +183,7 @@ function App() {
   if (appState === 'restore-vault') {
     return (
       <div className="flex h-screen w-full flex-col items-center justify-center bg-light-bg dark:bg-dark-bg gap-4 p-6 text-center">
-        <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+        <l-mirage size="40" speed="2.5" color="rgb(99 102 241)" />
         <p className="text-dark-bg/70 dark:text-light-bg/70">Reconnecting to your vault...</p>
       </div>
     );

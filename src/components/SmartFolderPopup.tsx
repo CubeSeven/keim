@@ -5,6 +5,8 @@ import type { SmartField, FieldType } from '../lib/db';
 import { getStorageMode } from '../lib/vault';
 import { db, getFullPath } from '../lib/db';
 import { motion } from 'framer-motion';
+import { mirage } from 'ldrs';
+mirage.register();
 
 interface SmartFolderPopupProps {
     folderId: number;
@@ -121,7 +123,7 @@ export default function SmartFolderPopup({ folderId, folderTitle, onClose }: Sma
 
                     {isLoading ? (
                         <div className="flex justify-center py-8">
-                            <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                            <l-mirage size="28" speed="2.5" color="rgb(99 102 241)" />
                         </div>
                     ) : (
                         <div className="space-y-2">
@@ -269,7 +271,7 @@ export default function SmartFolderPopup({ folderId, folderTitle, onClose }: Sma
                             className="px-4 py-2 text-sm font-semibold text-white rounded-md
                                        bg-indigo-500 hover:bg-indigo-600 active:scale-95 transition-all
                                        shadow-md shadow-indigo-500/25 flex items-center gap-2">
-                            {isSaving && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                            {isSaving && <l-mirage size="16" speed="2.5" color="white" />}
                             Save
                         </button>
                     </div>

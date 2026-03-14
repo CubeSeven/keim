@@ -12,6 +12,8 @@ import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import EmojiPicker from 'emoji-picker-react';
 import { SmilePlus, X, Tag, Plus, Lock, ArrowRight, CloudDownload, Cloud } from 'lucide-react';
+import { mirage } from 'ldrs';
+mirage.register();
 import type { SyncStatus } from '../App';
 import { editorViewOptionsCtx, editorViewCtx } from '@milkdown/kit/core';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
@@ -558,10 +560,8 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
                 {/* ── Initial Sync Banner (first session sync, no lastSyncTime yet) ── */}
                 {syncStatus === 'syncing' && !lastSyncTime && (
                     <div className="mb-6 px-4 py-3 rounded-lg bg-indigo-500/8 border border-indigo-500/15 flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
-                        <div className="flex items-center gap-[3px] shrink-0">
-                            <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                            <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                            <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        <div className="flex items-center shrink-0">
+                            <l-mirage size="32" speed="2.5" color="rgb(129 140 248)" />
                         </div>
                         <p className="text-xs text-dark-bg/60 dark:text-light-bg/60 leading-tight">
                             Syncing latest content from cloud — content may update shortly.

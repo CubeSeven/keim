@@ -1,13 +1,12 @@
 import { db, addItem, type NoteItem, getItemPath } from './db';
-import { Dropbox, DropboxAuth } from 'dropbox';
+import { getCloudProvider } from './cloud/ProviderManager';
+import { DropboxProvider } from './cloud/DropboxProvider';
 import { writeNoteToVault, deleteFromVault, getStorageMode, notePathFromTitle } from './vault';
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
-let dbxAuth: DropboxAuth | null = null;
-let dbx: Dropbox | null = null;
 let lastSyncTime: number | null = Number(localStorage.getItem('keim_last_sync')) || null;
 
 // When vault is locked (permission revoked on Android), we must NOT sync —
@@ -15,10 +14,6 @@ let lastSyncTime: number | null = Number(localStorage.getItem('keim_last_sync'))
 // cloud / disk data. Set this to true while isVaultLocked === true in App.tsx.
 let _vaultIsLocked = false;
 export function setVaultLocked(locked: boolean) { _vaultIsLocked = locked; }
-
-// All data lives under /keim/ inside the app‑folder so it works regardless of
-// whether the Dropbox app is configured as "App Folder" or "Full Dropbox".
-const APP_ROOT = '/keim';
 
 // Cross-tab synchronization
 const syncChannel = new BroadcastChannel('keim_sync');
@@ -31,7 +26,7 @@ function broadcastSyncStatus(status: 'syncing' | 'synced' | 'error' | 'idle' | '
     }
 }
 
-export function isDriveConnected() { return !!dbx; }
+export function isDriveConnected() { return getCloudProvider().isConnected(); }
 export function getLastSyncTime() { return lastSyncTime; }
 
 /**
@@ -56,103 +51,23 @@ async function runParallel<T>(
     return results;
 }
 
-interface DropboxTokenResponse {
-    refresh_token?: string;
-}
-
 // ---------------------------------------------------------------------------
-// Auth helpers
+// Auth helpers (Delegated)
 // ---------------------------------------------------------------------------
 
-const CLIENT_ID = import.meta.env.VITE_DROPBOX_APP_KEY as string;
-
-function getDbxAuth(): DropboxAuth | null {
-    if (!dbxAuth) {
-        if (!CLIENT_ID) return null;
-        dbxAuth = new DropboxAuth({ clientId: CLIENT_ID });
-    }
-    return dbxAuth;
-}
-
-function getRedirectUri(): string {
-    if (window.location.hostname === 'cubeseven.github.io') {
-        return 'https://CubeSeven.github.io/keim';
-    }
-    return (window.location.origin + window.location.pathname).replace(/\/$/, '');
-}
-
-/**
- * Attempt silent re‑auth from saved refresh token, or handle the PKCE callback.
- * Returns true if we are authenticated after this call.
- */
 export async function authorizeDropbox(): Promise<boolean> {
-    const auth = getDbxAuth();
-    if (!auth) return false;
-
-    // 1. Returning from Dropbox OAuth redirect?
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-
-    if (code) {
-        const verifier = window.sessionStorage.getItem('keim_pkce_verifier');
-        if (verifier) auth.setCodeVerifier(verifier);
-        try {
-            const response = await auth.getAccessTokenFromCode(getRedirectUri(), code);
-            const result = response.result as unknown as DropboxTokenResponse;
-            if (result.refresh_token) {
-                localStorage.setItem('keim_dropbox_refresh', result.refresh_token);
-                auth.setRefreshToken(result.refresh_token);
-            }
-            dbx = new Dropbox({ auth });
-            window.sessionStorage.removeItem('keim_pkce_verifier');
-            window.history.replaceState({}, document.title, window.location.pathname);
-            return true;
-        } catch (e) {
-            console.error('Failed to exchange PKCE code', e);
-            localStorage.removeItem('keim_dropbox_refresh');
-        }
-    }
-
-    // 2. Saved refresh token?
-    const savedRefresh = localStorage.getItem('keim_dropbox_refresh');
-    if (savedRefresh) {
-        auth.setRefreshToken(savedRefresh);
-        dbx = new Dropbox({ auth });
-        return true;
-    }
-
-    return false;
+    return getCloudProvider().authorize();
 }
 
-/**
- * Redirect the user to Dropbox to begin OAuth PKCE login.
- */
 export async function loginToDropbox() {
-    const auth = getDbxAuth();
-    if (!auth) throw new Error('Dropbox App Key is not configured.');
-    const authUrl = await auth.getAuthenticationUrl(
-        getRedirectUri(),
-        undefined,
-        'code',
-        'offline',
-        undefined,
-        'none',
-        true // PKCE
-    );
-    window.sessionStorage.setItem('keim_pkce_verifier', auth.getCodeVerifier());
-    window.location.href = authUrl.toString();
+    return getCloudProvider().login();
 }
 
-/**
- * Disconnect: clear tokens and Dropbox client instance.
- */
 export function disconnectDropbox() {
-    dbxAuth = null;
-    dbx = null;
+    getCloudProvider().disconnect();
+    // Reset our local sync engine state
     lastSyncTime = null;
-    folderChecked = false;
     lastAuthCheck = 0;
-    localStorage.removeItem('keim_dropbox_refresh');
     localStorage.removeItem('keim_last_sync');
 }
 
@@ -163,6 +78,7 @@ export function disconnectDropbox() {
 interface SyncManifestItem {
     updated_at: number;
     isDeleted: boolean;
+    deletedAt?: number;  // When the item was deleted — used for 30-day tombstone purge
     title?: string;      // Added for path-based dedup on fresh devices
     parentPath?: string; // Added for path-based dedup on fresh devices
 }
@@ -174,18 +90,41 @@ interface SyncManifest {
     }
 }
 
+// How long to retain tombstones before purging (30 days in ms)
+const TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 // Cache auth verification — no need to call usersGetCurrentAccount every sync
 let lastAuthCheck = 0;
 const AUTH_CHECK_TTL = 600000; // 10 minutes
 
 export async function syncNotesWithDrive(background = false) {
     // Never sync with stale data when the vault has not yet been unlocked.
-    // The in-memory Dexie cache may be from a previous session and uploading
-    // it would overwrite newer notes on Dropbox or on the vault disk.
     if (_vaultIsLocked) {
         console.log('Sync skipped: vault is locked.');
         return;
     }
+
+    // --- SYNC LEADER LOCK ---
+    // Use the Web Locks API to guarantee only one tab/instance runs the sync
+    // at a time. Without this, two open tabs can race to update manifest.json,
+    // with the last writer silently overwriting the first's changes.
+    // - Background syncs: yield immediately if another tab already holds the lock.
+    //   The winning tab's BroadcastChannel message propagates results to all tabs.
+    // - Manual (user-triggered) syncs: wait in queue so user always gets a full sync.
+    // Falls back gracefully on browsers without Locks API support.
+    if (typeof navigator !== 'undefined' && 'locks' in navigator) {
+        if (background) {
+            return navigator.locks.request('keim_sync_leader', { ifAvailable: true }, async (lock) => {
+                if (!lock) { console.log('Sync skipped: another tab is syncing.'); return; }
+                return _runSync(background);
+            });
+        }
+        return navigator.locks.request('keim_sync_leader', async () => _runSync(background));
+    }
+    return _runSync(background);
+}
+
+async function _runSync(background = false) {
 
     const isAuthorized = await authorizeDropbox();
     if (!isAuthorized) {
@@ -193,7 +132,7 @@ export async function syncNotesWithDrive(background = false) {
         await loginToDropbox();
         return;
     }
-    if (!dbx) return;
+    if (!getCloudProvider().isConnected()) return;
 
     if (!navigator.onLine) {
         throw new Error('You are offline. Please check your connection.');
@@ -201,19 +140,15 @@ export async function syncNotesWithDrive(background = false) {
 
     // Only verify the token if it hasn't been checked recently
     if (Date.now() - lastAuthCheck > AUTH_CHECK_TTL) {
-        try {
-            await dbx.usersGetCurrentAccount();
-            lastAuthCheck = Date.now();
-        } catch (e) {
-            const error = e as { status?: number; response?: { status?: number } };
-            const status = error?.status || error?.response?.status;
-            if (status === 400 || status === 401) {
-                disconnectDropbox();
+        const provider = getCloudProvider();
+        if (provider instanceof DropboxProvider) {
+            const healthy = await provider.checkAuthHealth();
+            if (!healthy) {
                 broadcastSyncStatus('disconnected');
-                throw new Error('Dropbox session expired. Please connect again.');
+                throw new Error('Cloud session expired. Please connect again.');
             }
-            throw new Error('Could not reach Dropbox. Please try again.');
         }
+        lastAuthCheck = Date.now();
     }
 
     const storageMode = getStorageMode();
@@ -223,13 +158,50 @@ export async function syncNotesWithDrive(background = false) {
         broadcastSyncStatus('syncing');
 
         // Ensure the keim folder exists (silent on conflict)
-        await ensureAppFolder();
+        await getCloudProvider().ensureAppFolder();
 
-        // Fetch remote manifest
+        // --- MANIFEST DOWNLOAD + INTEGRITY CHECK ---
+        // Validate the manifest structure before trusting it. If it's
+        // corrupt (partial write, truncation, etc.), start fresh so we
+        // don't make wrong sync decisions based on garbage timestamps.
         let remoteManifest: SyncManifest = { lastUpdated: 0, items: {} };
-        const manifestBlob = await downloadAppFile('/manifest.json');
+        const manifestBlob = await getCloudProvider().downloadFile('/manifest.json');
         if (manifestBlob) {
-            try { remoteManifest = JSON.parse(await manifestBlob.text()); } catch { /* start fresh */ }
+            try {
+                const parsed = JSON.parse(await manifestBlob.text());
+                // Integrity gate: must have a numeric lastUpdated and an items object
+                if (
+                    parsed &&
+                    typeof parsed.lastUpdated === 'number' &&
+                    typeof parsed.items === 'object' &&
+                    parsed.items !== null &&
+                    // Sanity-check: lastUpdated must not be in the far future (>1 day ahead)
+                    parsed.lastUpdated <= Date.now() + 86_400_000
+                ) {
+                    remoteManifest = parsed;
+                } else {
+                    console.warn('Sync: manifest failed integrity check — starting with full re-scan.', parsed);
+                }
+            } catch {
+                console.warn('Sync: manifest JSON corrupt — starting with full re-scan.');
+            }
+        }
+
+        // --- TOMBSTONE PURGE ---
+        // Remove tombstones older than 30 days. By now every online device
+        // will have seen the deletion (it was uploaded 30+ days ago).
+        // This prevents manifest.json from growing indefinitely.
+        const now = Date.now();
+        let manifestPruned = false;
+        for (const [idStr, meta] of Object.entries(remoteManifest.items)) {
+            if (meta.isDeleted) {
+                const deletedAt = meta.deletedAt ?? meta.updated_at; // fallback for old tombstones
+                if (now - deletedAt > TOMBSTONE_TTL_MS) {
+                    delete remoteManifest.items[Number(idStr)];
+                    manifestPruned = true;
+                    console.log(`Sync: purged stale tombstone for id ${idStr} (deleted ${Math.floor((now - deletedAt) / 86_400_000)} days ago).`);
+                }
+            }
         }
 
         let localItems = await db.items.toArray();
@@ -463,7 +435,7 @@ export async function syncNotesWithDrive(background = false) {
                         } catch { /* best‑effort */ }
                     }
                 } else if (!isRemoteDeleted) {
-                    const itemBlob = await downloadAppFile(`/items/${id}.json`);
+                    const itemBlob = await getCloudProvider().downloadFile(`/items/${id}.json`);
                     if (itemBlob) {
                         const item = JSON.parse(await itemBlob.text());
 
@@ -476,7 +448,7 @@ export async function syncNotesWithDrive(background = false) {
                         await db.items.put(item);
                         if (item.type === 'note' && !item.isDeleted) {
                             // Download item + content in parallel
-                            const contentBlob = await downloadAppFile(`/contents/${id}.json`);
+                            const contentBlob = await getCloudProvider().downloadFile(`/contents/${id}.json`);
                             if (contentBlob) {
                                 const contentData = JSON.parse(await contentBlob.text());
 
@@ -517,29 +489,39 @@ export async function syncNotesWithDrive(background = false) {
         // Uploads - Parallelised with concurrency limit.
         // Each note has 2 files (item + content), so we batch them as one task.
         const uploadTasks = toUpload.map(item => async () => {
-            await uploadAppFile(`/items/${item.id}.json`, JSON.stringify(item));
+            await getCloudProvider().uploadFile(`/items/${item.id}.json`, JSON.stringify(item));
             if (item.type === 'note' && !item.isDeleted) {
                 const content = await db.contents.get(item.id!);
                 if (content) {
-                    await uploadAppFile(`/contents/${item.id}.json`, JSON.stringify(content));
+                    await getCloudProvider().uploadFile(`/contents/${item.id}.json`, JSON.stringify(content));
                 }
             }
-            remoteManifest.items[item.id!] = {
+            const manifestEntry: SyncManifestItem = {
                 updated_at: item.updated_at,
                 isDeleted: !!item.isDeleted,
                 title: item.title,
                 parentPath: getItemPath(item.parentId, localItems),
             };
+            if (item.isDeleted) {
+                // Record WHEN the item was deleted for the 30-day tombstone TTL.
+                // Use existing deletedAt if already set (idempotent across syncs).
+                manifestEntry.deletedAt = remoteManifest.items[item.id!]?.deletedAt ?? item.updated_at;
+                // --- HARD-DELETE orphaned content from IndexedDB ---
+                // At this point the tombstone is confirmed uploaded to Dropbox,
+                // so it's safe to free the content from local storage.
+                await db.contents.delete(item.id!);
+            }
+            remoteManifest.items[item.id!] = manifestEntry;
         });
         await runParallel(uploadTasks);
 
-        if (toUpload.length > 0 || toDownload.length > 0) {
+        if (toUpload.length > 0 || toDownload.length > 0 || manifestPruned) {
             remoteManifest.lastUpdated = Date.now();
-            await uploadAppFile('/manifest.json', JSON.stringify(remoteManifest));
+            await getCloudProvider().uploadFile('/manifest.json', JSON.stringify(remoteManifest));
         }
 
         // --- SMART SCHEMAS SYNC ---
-        const schemasBlob = await downloadAppFile('/schemas.json');
+        const schemasBlob = await getCloudProvider().downloadFile('/schemas.json');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let remoteSchemas: Record<number, any[]> = {};
         if (schemasBlob) {
@@ -594,7 +576,7 @@ export async function syncNotesWithDrive(background = false) {
         }
 
         if (schemasModified || !lastSyncTime) { 
-             await uploadAppFile('/schemas.json', JSON.stringify(remoteSchemas));
+             await getCloudProvider().uploadFile('/schemas.json', JSON.stringify(remoteSchemas));
         }
 
         // --- PHYSICAL VAULT RECONCILIATION ---
@@ -645,85 +627,7 @@ export async function syncNotesWithDrive(background = false) {
 }
 
 // ---------------------------------------------------------------------------
-// Dropbox File Helpers
-// ---------------------------------------------------------------------------
-
-let folderChecked = false;
-
-async function ensureAppFolder() {
-    if (!dbx || folderChecked) return;
-    try {
-        await dbx.filesCreateFolderV2({ path: APP_ROOT, autorename: false });
-    } catch (e) {
-        // 409 = folder already exists — that's expected and fine
-        const error = e as { status?: number; response?: { status?: number }; error?: { error_summary?: string } };
-        const status = error?.status || error?.response?.status;
-        const errSummary = error?.error?.error_summary || '';
-        if (status === 409 || errSummary.includes('path/conflict')) {
-            // Expected — folder exists
-        } else {
-            console.warn('Sync: Could not ensure app folder:', e);
-        }
-    }
-    folderChecked = true;
-}
-
-async function downloadAppFile(relativePath: string, retryCount = 0): Promise<Blob | null> {
-    if (!dbx) return null;
-    const fullPath = `${APP_ROOT}${relativePath}`;
-    try {
-        const response = await dbx.filesDownload({ path: fullPath });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return (response.result as any).fileBlob;
-    } catch (e) {
-        const error = e as { status?: number; response?: { status?: number; headers?: { get: (h: string) => string | null } }; error?: { error_summary?: string } };
-        // Network errors (offline, DNS failure, etc.)
-        if (error instanceof TypeError && retryCount < 2) {
-            await new Promise(r => setTimeout(r, 3000));
-            return downloadAppFile(relativePath, retryCount + 1);
-        }
-        const status = error?.status || error?.response?.status;
-        const summary = error?.error?.error_summary || '';
-        if (status === 409 || status === 404 || summary.includes('path/not_found')) {
-            return null; // File doesn't exist yet
-        }
-        if (status === 429 && retryCount < 3) {
-            const retryAfter = error?.response?.headers?.get('retry-after') || 2;
-            await new Promise(r => setTimeout(r, Number(retryAfter) * 1000));
-            return downloadAppFile(relativePath, retryCount + 1);
-        }
-        throw error;
-    }
-}
-
-async function uploadAppFile(relativePath: string, content: string, retryCount = 0) {
-    if (!dbx) return;
-    const fullPath = `${APP_ROOT}${relativePath}`;
-    try {
-        await dbx.filesUpload({
-            path: fullPath,
-            contents: content,
-            mode: { '.tag': 'overwrite' }
-        });
-    } catch (e) {
-        const error = e as { status?: number; response?: { status?: number; headers?: { get: (h: string) => string | null } } };
-        // Network errors (offline, DNS failure, etc.)
-        if (error instanceof TypeError && retryCount < 2) {
-            await new Promise(r => setTimeout(r, 3000));
-            return uploadAppFile(relativePath, content, retryCount + 1);
-        }
-        const status = error?.status || error?.response?.status;
-        if (status === 429 && retryCount < 3) {
-            const retryAfter = error?.response?.headers?.get('retry-after') || 2;
-            await new Promise(r => setTimeout(r, Number(retryAfter) * 1000));
-            return uploadAppFile(relativePath, content, retryCount + 1);
-        }
-        throw error;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Auto‑Sync Debouncer
+// Auto-Sync Debouncer
 // ---------------------------------------------------------------------------
 
 let syncTimeout: number | null = null;
@@ -731,7 +635,7 @@ let isSyncing = false;
 let syncQueued = false;
 
 async function executeSync() {
-    if (!dbx) return;
+    if (!getCloudProvider().isConnected()) return;
     try {
         isSyncing = true;
         await syncNotesWithDrive(true);
