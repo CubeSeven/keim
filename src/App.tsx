@@ -317,6 +317,8 @@ function App() {
                     isVaultLocked={isVaultLocked}
                     onUnlockVault={handleUnlockVault}
                     onSelectNote={handleSelectNote}
+                    syncStatus={syncStatus}
+                    lastSyncTime={lastSyncTime}
                   />
                 </Suspense>
               </motion.div>
@@ -350,6 +352,8 @@ function App() {
             onAddNote={() => handleAddNote(0)}
             onAddFolder={() => handleAddFolder(0)}
             isSidebarOpen={isSidebarOpen}
+            syncStatus={syncStatus}
+            onSync={doSync}
           />
         )}
       </main>

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getFullPath, getItemPath } from '../lib/db';
 import { triggerAutoSync } from '../lib/sync';
-import { getStorageMode, writeNoteToVault, notePathFromTitle } from '../lib/vault';
+import { getStorageMode, notePathFromTitle, writeNoteToVault } from '../lib/vault';
 import { updateSearchIndex } from '../lib/search';
 import { ENABLE_SMART_PROPS } from '../constants';
 import { parseYamlFrontmatter, serializeYamlFrontmatter } from '../lib/smartProps';
@@ -11,7 +11,8 @@ import PropertiesHeader from './PropertiesHeader';
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import EmojiPicker from 'emoji-picker-react';
-import { SmilePlus, X, Tag, Plus, Lock, ArrowRight } from 'lucide-react';
+import { SmilePlus, X, Tag, Plus, Lock, ArrowRight, CloudDownload, Cloud } from 'lucide-react';
+import type { SyncStatus } from '../App';
 import { editorViewOptionsCtx, editorViewCtx } from '@milkdown/kit/core';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
 import { ProsemirrorAdapterProvider, useNodeViewFactory } from '@prosemirror-adapter/react';
@@ -28,6 +29,8 @@ interface EditorProps {
     isVaultLocked?: boolean;
     onUnlockVault?: () => Promise<boolean>;
     onSelectNote: (id: number) => void;
+    syncStatus?: SyncStatus;
+    lastSyncTime?: number | null;
 }
 
 interface CrepeBodyProps {
@@ -224,7 +227,7 @@ function CrepeBody(props: CrepeBodyProps) {
     );
 }
 
-export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectNote }: EditorProps) {
+export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectNote, syncStatus, lastSyncTime }: EditorProps) {
     const note = useLiveQuery(() => db.items.get(noteId), [noteId]);
     const noteContent = useLiveQuery(() => db.contents.get(noteId), [noteId]);
     const smartSchema = useLiveQuery(() => 
@@ -233,6 +236,11 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
     const [title, setTitle] = useState('');
     const saveTimeoutRef = useRef<number | null>(null);
     const [syncRevision, setSyncRevision] = useState(0);
+    // Conflict state: set when sync wants to overwrite a note the user is actively editing
+    const [conflictPending, setConflictPending] = useState(false);
+    // Toast: briefly shown after a non-conflicting cloud update
+    const [cloudUpdateToast, setCloudUpdateToast] = useState(false);
+    const cloudToastTimer = useRef<number | null>(null);
 
     // The content to seed the editor with comes from three sources, in priority order:
     // 1. The synchronous in-memory buffer (user typed but DB not yet written)
@@ -372,7 +380,17 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
         const handleSyncComplete = ((e: CustomEvent) => {
             const downloadedIds = e.detail?.downloadedIds as number[] | undefined;
             if (!downloadedIds || downloadedIds.includes(noteId)) {
+                // RACE CONDITION GUARD: If the user has unsaved pending edits, do NOT
+                // silently overwrite them. Show a conflict banner instead.
+                if (pendingSaveRef.current !== null) {
+                    setConflictPending(true);
+                    return;
+                }
                 setSyncRevision(r => r + 1);
+                // Show a brief "Updated from cloud" toast for non-conflicting updates
+                if (cloudToastTimer.current) window.clearTimeout(cloudToastTimer.current);
+                setCloudUpdateToast(true);
+                cloudToastTimer.current = window.setTimeout(() => setCloudUpdateToast(false), 3000);
             }
         }) as EventListener;
         window.addEventListener('keim_sync_complete', handleSyncComplete);
@@ -418,11 +436,9 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
         const fullPath = getFullPath(noteId, allItems);
         updateSearchIndex(noteId, noteItem.title, markdown, noteItem.parentId, fullPath, noteItem.icon, noteItem.tags);
         localStorage.setItem('keim_has_user_edits', 'true');
-        if (getStorageMode() === 'vault') {
-            const parentPath = getFullPath(noteId, allItems);
-            const path = notePathFromTitle(noteItem.title, parentPath);
-            writeNoteToVault(path, markdown).catch(console.warn);
-        }
+        // NOTE: No live vault write here intentionally.
+        // The vault is a sync-only mirror — reconcileVault (called on every Dropbox
+        // sync cycle) keeps .md files up to date without hammering the disk on every keystroke.
         triggerAutoSync();
     }, [noteId]);
 
@@ -512,6 +528,22 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
 
     if (!note || !editorReady) return null;
 
+    // Handlers for conflict resolution banner
+    const handleKeepMine = () => {
+        // User keeps their local version — mark as saved to push it to cloud
+        setConflictPending(false);
+        const buffered = contentBuffer.get(noteId);
+        if (buffered !== undefined) {
+            persistContent(buffered, note);
+        }
+    };
+    const handleUseCloud = () => {
+        // User accepts cloud version — clear buffer and re-mount editor with cloud content
+        contentBuffer.delete(noteId);
+        setConflictPending(false);
+        setSyncRevision(r => r + 1);
+    };
+
     return (
         /* Full-height scroll container */
         <div className="h-full overflow-y-auto">
@@ -523,6 +555,57 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
                     paddingTop: window.innerWidth < 768 ? 'calc(5rem + var(--spacing-safe-top, 0px))' : 'calc(3rem + var(--spacing-safe-top, 0px))'
                 }}
             >
+                {/* ── Initial Sync Banner (first session sync, no lastSyncTime yet) ── */}
+                {syncStatus === 'syncing' && !lastSyncTime && (
+                    <div className="mb-6 px-4 py-3 rounded-lg bg-indigo-500/8 border border-indigo-500/15 flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
+                        <div className="flex items-center gap-[3px] shrink-0">
+                            <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                            <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                            <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </div>
+                        <p className="text-xs text-dark-bg/60 dark:text-light-bg/60 leading-tight">
+                            Syncing latest content from cloud — content may update shortly.
+                        </p>
+                    </div>
+                )}
+
+                {/* ── Conflict Banner ── */}
+                {conflictPending && (
+                    <div className="mb-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/25 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+                                <Cloud size={16} className="text-amber-500" />
+                            </div>
+                            <div className="text-left">
+                                <h4 className="text-sm font-bold text-dark-bg dark:text-light-bg leading-tight">Cloud has a newer version</h4>
+                                <p className="text-[11px] text-dark-bg/60 dark:text-light-bg/60 leading-tight mt-0.5">You were editing while a newer version synced from another device.</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 ml-auto">
+                            <button
+                                onClick={handleKeepMine}
+                                className="px-3 py-1.5 rounded-lg bg-dark-bg/8 dark:bg-light-bg/8 text-dark-bg dark:text-light-bg text-xs font-semibold hover:bg-dark-bg/15 dark:hover:bg-light-bg/15 transition-colors"
+                            >
+                                Keep mine
+                            </button>
+                            <button
+                                onClick={handleUseCloud}
+                                className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 transition-colors shadow-sm"
+                            >
+                                Use cloud version
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── Cloud Update Toast ── */}
+                {cloudUpdateToast && (
+                    <div className="mb-4 flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 animate-in fade-in duration-200">
+                        <CloudDownload size={13} strokeWidth={2} />
+                        <span className="font-medium">Note updated from cloud</span>
+                    </div>
+                )}
+
                 {/* ── Vault Locked Banner ── */}
                 {isVaultLocked && (
                     <div className="mb-10 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">

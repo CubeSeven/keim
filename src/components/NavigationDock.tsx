@@ -1,19 +1,66 @@
-import { Plus, Folder, Search } from 'lucide-react';
+import { Plus, Folder, Search, Cloud, Check, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import type { SyncStatus } from '../App';
 
 interface NavigationDockProps {
     onAddNote: () => void;
     onAddFolder: () => void;
     isSidebarOpen: boolean;
+    syncStatus?: SyncStatus;
+    onSync?: () => void;
 }
 
-export default function NavigationDock({ onAddNote, onAddFolder, isSidebarOpen }: NavigationDockProps) {
+function DockSyncIndicator({ status, onSync }: { status: SyncStatus; onSync?: () => void }) {
+    if (status === 'disconnected' || status === 'idle') return null;
+
+    const handleClick = () => {
+        if (status !== 'syncing') onSync?.();
+    };
+
+    return (
+        <AnimatePresence mode="wait">
+            <motion.button
+                key={status}
+                initial={{ opacity: 0, scale: 0.7 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.7 }}
+                transition={{ duration: 0.2 }}
+                onClick={handleClick}
+                disabled={status === 'syncing'}
+                title={status === 'syncing' ? 'Syncing…' : status === 'synced' ? 'Synced' : 'Sync error — tap to retry'}
+                className="flex flex-col items-center justify-center p-3 transition-colors"
+            >
+                {status === 'syncing' && (
+                    <span className="flex items-center gap-[3px] h-5">
+                        <span className="w-1.5 h-1.5 bg-[#F44E2C] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 bg-[#F44E2C] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 bg-[#F44E2C] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </span>
+                )}
+                {status === 'synced' && (
+                    <Check size={18} strokeWidth={2.5} className="text-emerald-500" />
+                )}
+                {status === 'error' && (
+                    <AlertCircle size={18} strokeWidth={1.5} className="text-amber-500" />
+                )}
+                {/* Show cloud icon as base under syncing/error for context */}
+                {(status === 'error') && (
+                    <Cloud size={10} strokeWidth={1.5} className="text-amber-400 -mt-0.5 opacity-60" />
+                )}
+            </motion.button>
+        </AnimatePresence>
+    );
+}
+
+export default function NavigationDock({ onAddNote, onAddFolder, isSidebarOpen, syncStatus = 'disconnected', onSync }: NavigationDockProps) {
     const handleSearch = () => {
         document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyK', altKey: true }));
     };
 
     const btnClass =
         'flex flex-col items-center justify-center p-3 text-dark-bg/60 dark:text-light-bg/60 hover:text-dark-bg dark:hover:text-light-bg transition-colors';
+
+    const showSync = syncStatus !== 'disconnected' && syncStatus !== 'idle';
 
     return (
         <AnimatePresence mode="wait" initial={false}>
@@ -62,6 +109,17 @@ export default function NavigationDock({ onAddNote, onAddFolder, isSidebarOpen }
             >
                 <Folder size={20} strokeWidth={1.5} />
             </motion.button>
+
+            {/* Sync indicator — only visible during active sync states AND when sidebar is closed */}
+            {showSync && !isSidebarOpen && (
+                <>
+                    <div className={`
+                        bg-dark-bg/10 dark:bg-light-bg/10 mx-1 opacity-50
+                        ${isSidebarOpen ? 'w-6 h-px md:w-px md:h-6' : 'w-px h-6'}
+                    `}></div>
+                    <DockSyncIndicator status={syncStatus} onSync={onSync} />
+                </>
+            )}
         </motion.div>
         </AnimatePresence>
     );

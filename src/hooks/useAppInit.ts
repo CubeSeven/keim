@@ -189,13 +189,24 @@ export function useAppInit() {
     useEffect(() => {
         const channel = new BroadcastChannel('keim_sync');
         const handler = (event: MessageEvent) => {
-            const { type, status, timestamp } = event.data;
+            const { type, status, timestamp, downloadedIds } = event.data;
             if (type === 'sync_status') setSyncStatus(status);
-            else if (type === 'sync_complete' && timestamp) setLastSyncTime(timestamp);
+            else if (type === 'sync_complete' && timestamp) {
+                setLastSyncTime(timestamp);
+                // *** THE CRITICAL FIX ***
+                // The tab that ran the sync dispatches keim_sync_complete locally,
+                // but OTHER tabs only received the BroadcastChannel message.
+                // We must re-fire the window event here so that Editor's
+                // handleSyncComplete triggers and re-mounts with the fresh DB content.
+                window.dispatchEvent(new CustomEvent('keim_sync_complete', {
+                    detail: { downloadedIds: downloadedIds ?? [] }
+                }));
+            }
         };
         channel.addEventListener('message', handler);
         return () => channel.close();
     }, [setSyncStatus, setLastSyncTime]);
+
 
     // --- App Init Orchestration ---
     useEffect(() => {
