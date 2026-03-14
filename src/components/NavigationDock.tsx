@@ -34,7 +34,7 @@ function DockSyncIndicator({ status, onSync }: { status: SyncStatus; onSync?: ()
             >
                 {status === 'syncing' && (
                     <span className="flex items-center justify-center h-5">
-                        <l-mirage size="18" speed="2.5" color="#F44E2C" />
+                        <l-mirage size="32" speed="2.5" color="#F44E2C" />
                     </span>
                 )}
                 {status === 'synced' && (
