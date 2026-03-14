@@ -18,8 +18,26 @@ import { mirage } from 'ldrs';
 mirage.register();
 
 const FallbackSpinner = () => (
-  <div className="flex w-full h-full items-center justify-center p-8">
-    <l-mirage size="40" speed="2.5" color="rgb(99 102 241)" />
+  <div className="flex h-full w-full overflow-y-auto">
+      <div 
+          className="mx-auto w-full px-6 md:px-12 lg:px-16 pb-64 animate-pulse mt-8"
+          style={{
+              maxWidth: '900px',
+              paddingTop: window.innerWidth < 768 ? 'calc(5rem + var(--spacing-safe-top, 0px))' : 'calc(3rem + var(--spacing-safe-top, 0px))'
+          }}
+      >
+          {/* Title Skeleton */}
+          <div className="h-10 bg-dark-bg/5 dark:bg-light-bg/5 rounded-lg w-2/3 mb-10"></div>
+          
+          {/* Body Skeletons */}
+          <div className="space-y-4">
+              <div className="h-4 bg-dark-bg/5 dark:bg-light-bg/5 rounded w-full"></div>
+              <div className="h-4 bg-dark-bg/5 dark:bg-light-bg/5 rounded w-5/6"></div>
+              <div className="h-4 bg-dark-bg/5 dark:bg-light-bg/5 rounded w-4/6"></div>
+              <div className="h-4 bg-dark-bg/5 dark:bg-light-bg/5 rounded w-full"></div>
+              <div className="h-4 bg-dark-bg/5 dark:bg-light-bg/5 rounded w-3/4"></div>
+          </div>
+      </div>
   </div>
 );
 import { useAppStore } from './store';
@@ -314,7 +332,7 @@ function App() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.12, ease: 'easeInOut' }}
               >
-                <Suspense fallback={<div className="flex-1 w-full h-full flex items-center justify-center"><FallbackSpinner /></div>}>
+                <Suspense fallback={<FallbackSpinner />}>
                   <Editor
                     noteId={selectedNoteId}
                     isVaultLocked={isVaultLocked}
