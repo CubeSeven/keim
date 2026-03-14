@@ -278,9 +278,9 @@ function SyncStatusBadge({ status, lastSyncTime, onSync }: { status: SyncStatus,
 
     if (status === 'disconnected') { colorClass = 'text-dark-bg/30'; content = <CloudOff size={16} strokeWidth={1.5} />; }
     else if (status === 'error') { colorClass = 'text-amber-500'; content = <><AlertCircle size={16} strokeWidth={1.5} /><span className="text-[10px] font-medium tracking-wide leading-none">Error</span></>; }
-    else if (status === 'syncing') { colorClass = 'text-[#F44E2C]'; content = <div className="flex items-center justify-center px-1 h-4"><l-mirage size="20" speed="2.5" color="currentColor" /></div>; }
-    else if (status === 'synced' && showSuccess) { colorClass = 'text-emerald-500'; content = <><Check size={16} strokeWidth={2} /><span className="text-[10px] font-bold uppercase tracking-wider leading-none">Synced</span></>; }
-    else { colorClass = 'text-dark-bg/60'; content = <>{status === 'synced' ? <Check size={16} strokeWidth={1.5} className="opacity-70" /> : <Cloud size={16} strokeWidth={1.5} className="opacity-70" />}{timeString && <span className="text-[10px] font-medium opacity-80">{timeString}</span>}</>; }
+    else if (status === 'syncing') { colorClass = 'text-[#F44E2C]'; content = <div className="flex items-center justify-center px-1 h-4"><l-mirage size="18" speed="2.5" color="currentColor" /></div>; }
+    else if (status === 'synced' && showSuccess) { colorClass = 'text-emerald-500'; content = <Check size={18} strokeWidth={2.5} className="mx-0.5" />; }
+    else { colorClass = 'text-dark-bg/60'; content = <>{status === 'synced' ? <Check size={18} strokeWidth={2.5} className="opacity-70" /> : <Cloud size={16} strokeWidth={1.5} className="opacity-70" />}{timeString && <span className="text-[10px] font-medium opacity-80">{timeString}</span>}</>; }
 
     return (
         <button onClick={(e) => { e.stopPropagation(); if (status !== 'syncing') onSync?.(); }} disabled={status === 'syncing'} className={`flex items-center h-[28px] md:h-[26px] px-2 gap-1.5 rounded-lg hover:bg-dark-bg/10 shrink-0 ${colorClass}`}>

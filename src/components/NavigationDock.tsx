@@ -1,5 +1,7 @@
 import { Plus, Folder, Search, Cloud, Check, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { mirage } from 'ldrs';
+mirage.register();
 import type { SyncStatus } from '../App';
 
 interface NavigationDockProps {
@@ -31,10 +33,8 @@ function DockSyncIndicator({ status, onSync }: { status: SyncStatus; onSync?: ()
                 className="flex flex-col items-center justify-center p-3 transition-colors"
             >
                 {status === 'syncing' && (
-                    <span className="flex items-center gap-[3px] h-5">
-                        <span className="w-1.5 h-1.5 bg-[#F44E2C] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1.5 h-1.5 bg-[#F44E2C] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1.5 h-1.5 bg-[#F44E2C] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    <span className="flex items-center justify-center h-5">
+                        <l-mirage size="18" speed="2.5" color="#F44E2C" />
                     </span>
                 )}
                 {status === 'synced' && (

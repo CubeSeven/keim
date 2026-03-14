@@ -552,7 +552,31 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
         return () => window.removeEventListener('keim_focus_title', handleFocus as EventListener);
     }, [noteId]);
 
-    if (!note || !editorReady) return null;
+    if (!note || !editorReady) {
+        return (
+            <div className="h-full overflow-y-auto">
+                <div 
+                    className="mx-auto w-full px-6 md:px-12 lg:px-16 pb-64 animate-pulse mt-8"
+                    style={{
+                        maxWidth: '900px',
+                        paddingTop: window.innerWidth < 768 ? 'calc(5rem + var(--spacing-safe-top, 0px))' : 'calc(3rem + var(--spacing-safe-top, 0px))'
+                    }}
+                >
+                    {/* Title Skeleton */}
+                    <div className="h-10 bg-dark-bg/5 dark:bg-light-bg/5 rounded-lg w-2/3 mb-10"></div>
+                    
+                    {/* Body Skeletons */}
+                    <div className="space-y-4">
+                        <div className="h-4 bg-dark-bg/5 dark:bg-light-bg/5 rounded w-full"></div>
+                        <div className="h-4 bg-dark-bg/5 dark:bg-light-bg/5 rounded w-5/6"></div>
+                        <div className="h-4 bg-dark-bg/5 dark:bg-light-bg/5 rounded w-4/6"></div>
+                        <div className="h-4 bg-dark-bg/5 dark:bg-light-bg/5 rounded w-full"></div>
+                        <div className="h-4 bg-dark-bg/5 dark:bg-light-bg/5 rounded w-3/4"></div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     // Handlers for conflict resolution banner
     const handleKeepMine = () => {
