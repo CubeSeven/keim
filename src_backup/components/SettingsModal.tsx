@@ -4,7 +4,6 @@ import { exportToFolder, importMarkdownFiles } from '../lib/export-import';
 import { APP_VERSION } from '../constants';
 import { isFileSystemSupported } from '../lib/vault';
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 
 const DropboxIcon = ({ className }: { className?: string }) => (
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
@@ -36,7 +35,7 @@ function ShortcutRow({ keys, label, description }: { keys: string[], label: stri
             </div>
             <div className="flex items-center gap-1.5">
                 {keys.map((k, i) => (
-                    <div key={`${k}-${i}`} className="flex items-center gap-1.5">
+                    <div key={k} className="flex items-center gap-1.5">
                         <kbd className="min-w-[24px] h-6 flex items-center justify-center px-1.5 rounded bg-white dark:bg-white/10 border border-black/10 dark:border-white/20 shadow-sm text-[10px] font-bold font-mono uppercase tracking-tighter text-dark-bg dark:text-light-bg">
                             {k}
                         </kbd>
@@ -135,24 +134,16 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
         setFeedback(null);
     }, [activeTab]);
 
+    if (!isOpen) return null;
+
     return (
-        <AnimatePresence>
-            {isOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                    <motion.div
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="absolute inset-0 bg-dark-bg/50 backdrop-blur-sm"
-                        onClick={onClose}
-                        aria-hidden="true"
-                    />
-                    <motion.div 
-                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                        transition={{ duration: 0.2, ease: "easeOut" }}
-                        className="relative w-full max-w-2xl bg-light-bg dark:bg-dark-bg rounded-lg shadow-2xl border border-light-ui dark:border-dark-ui flex flex-col md:flex-row overflow-hidden"
-                    >
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div
+                className="absolute inset-0 bg-dark-bg/50 backdrop-blur-sm"
+                onClick={onClose}
+                aria-hidden="true"
+            />
+            <div className="relative w-full max-w-2xl bg-light-bg dark:bg-dark-bg rounded-lg shadow-2xl border border-light-ui dark:border-dark-ui flex flex-col md:flex-row overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 {/* Fixed Max-Height container for the modal content */}
                 <div className="flex flex-col md:flex-row w-full max-h-[85vh] md:max-h-[600px] md:h-[600px]">
                     {/* Sidebar / Tabs Navigation */}
@@ -625,9 +616,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                         </div>
                     </div>
                 </div>
-            </motion.div>
+            </div>
         </div>
-    )}
-</AnimatePresence>
-);
+    );
 }

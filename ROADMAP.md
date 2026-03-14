@@ -30,3 +30,11 @@ Expand the Smart Folder dashboards with dynamic views powered by YAML frontmatte
 *   **Rich Image Support:** Native support for image fields and gallery thumbnails.
 *   **Shared Dashboards:** Ability to link a single dashboard view into multiple notes.
 *   **Advanced Relations:** Bi-directional linking in the Smart Table.
+
+---
+
+## 🚀 Performance & Optimizations
+*   **Lazy Loading & Bundle Splitting:** Defer loading heavy components like `Editor`, `SettingsModal`, or `CommandPalette` to improve initial load time.
+*   **Premium Micro-Animations:** Introduce `framer-motion` for smooth UI transitions (sidebar, modals, list reordering).
+*   **Search Engine Optimization:** Replace basic search with `FlexSearch` or `MiniSearch` for typo-tolerant, instantaneous full-text search.
+*   **Offline Sync Queue:** Track offline mutations and automatically push them to the Vault/Dropbox upon network restore.

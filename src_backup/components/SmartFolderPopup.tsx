@@ -4,7 +4,6 @@ import { readSchema, writeSchema, deleteSchema } from '../lib/smartProps';
 import type { SmartField, FieldType } from '../lib/db';
 import { getStorageMode } from '../lib/vault';
 import { db, getFullPath } from '../lib/db';
-import { motion } from 'framer-motion';
 
 interface SmartFolderPopupProps {
     folderId: number;
@@ -66,26 +65,16 @@ export default function SmartFolderPopup({ folderId, folderTitle, onClose }: Sma
 
     return (
         <div
-            className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center"
+            className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm"
             onClick={e => e.target === e.currentTarget && onClose()}>
-            
-            <motion.div
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="absolute inset-0 bg-black/40 backdrop-blur-sm -z-10"
-            />
 
             {/* Sheet on mobile (slides from bottom), centered dialog on sm+ */}
-            <motion.div 
-                initial={{ opacity: 0, y: 50, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 50, scale: 0.95 }}
-                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                className="w-full sm:max-w-md flex flex-col sm:mx-4
+            <div className="w-full sm:max-w-md flex flex-col sm:mx-4
                             max-h-[90vh] sm:max-h-[85vh]
                             rounded-t-xl sm:rounded-xl overflow-hidden shadow-2xl
                             border border-black/8 dark:border-white/10
-                            bg-light-bg/95 dark:bg-[#1a1a1f]/95 backdrop-blur-xl">
+                            bg-light-bg/95 dark:bg-[#1a1a1f]/95 backdrop-blur-xl
+                            animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
 
                 {/* ── Drag handle (mobile only) ── */}
                 <div className="flex justify-center pt-3 pb-0 sm:hidden">
@@ -165,7 +154,7 @@ export default function SmartFolderPopup({ folderId, folderTitle, onClose }: Sma
                                                            text-dark-bg dark:text-light-bg
                                                            border border-black/6 dark:border-white/8
                                                            focus:ring-1 focus:ring-indigo-500/40 outline-none cursor-pointer transition-all">
-                                                {FIELD_TYPES.map((t, i) => <option key={`${t.value}-${i}`} value={t.value}>{t.label}</option>)}
+                                                {FIELD_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                                             </select>
                                             <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-dark-bg/40 dark:text-light-bg/40" />
                                         </div>
@@ -186,7 +175,7 @@ export default function SmartFolderPopup({ folderId, folderTitle, onClose }: Sma
                                             <p className="text-[10px] font-semibold text-dark-bg/40 dark:text-light-bg/35 uppercase tracking-widest mb-2">Options</p>
                                             <div className="flex flex-wrap gap-1.5">
                                                 {(field.options || []).map((opt, oi) => (
-                                                    <span key={`${opt}-${oi}`}
+                                                    <span key={oi}
                                                         className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs
                                                                    bg-indigo-500/10 dark:bg-indigo-400/10
                                                                    text-indigo-700 dark:text-indigo-300
@@ -274,7 +263,7 @@ export default function SmartFolderPopup({ folderId, folderTitle, onClose }: Sma
                         </button>
                     </div>
                 </div>
-            </motion.div>
+            </div>
         </div>
     );
 }

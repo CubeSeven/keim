@@ -153,11 +153,10 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
             })
         ];
 
-        const fieldCols = schema.fields.map((f, i) => {
-            const colId = f.name || `unnamed_${i}`;
+        const fieldCols = schema.fields.map(f => {
             return columnHelper.accessor(row => row.meta[f.name] || '', {
-                id: colId,
-                header: () => f.name || '—',
+                id: f.name,
+                header: () => f.name,
                 size: Math.max(colMinWidth(f.type), 150),
                 minSize: colMinWidth(f.type),
                 sortingFn: 'alphanumeric',
@@ -188,7 +187,7 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
                                 style={{ ...baseInput, padding: CP, display: 'block', cursor: 'pointer' }}
                                 className="text-dark-bg/80 dark:text-light-bg/80 w-full bg-transparent">
                                 <option value="" disabled hidden>—</option>
-                                {(f.options || []).map((o, i) => <option key={`${o}-${i}`} value={o}>{o}</option>)}
+                                {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
                             </select>;
                     } else if (f.type === 'relation') {
                         return <div style={{ padding: CP, height: '100%', display: 'flex', alignItems: 'center' }}>

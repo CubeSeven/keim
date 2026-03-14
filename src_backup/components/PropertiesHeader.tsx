@@ -68,7 +68,7 @@ export default function PropertiesHeader({ schema, content, onUpdateContent, onS
 
                 {/* Fields grid */}
                 <div className="px-2 py-1.5">
-                {schema.fields.map((field, idx) => {
+                {schema.fields.map(field => {
                     const val = meta[field.name] || '';
                     const Icon = TYPE_ICON[field.type] ?? Type;
 
@@ -98,8 +98,8 @@ export default function PropertiesHeader({ schema, content, onUpdateContent, onS
                                 onChange={e => handleChange(field.name, e.target.value)}
                                 className="bg-transparent text-sm outline-none text-dark-bg dark:text-light-bg w-32 cursor-pointer appearance-none">
                                 <option value="" disabled hidden>Select…</option>
-                                {(field.options || []).map((o, i) => (
-                                    <option key={`${o}-${i}`} value={o} className="bg-light-bg dark:bg-dark-bg">{o}</option>
+                                {(field.options || []).map(o => (
+                                    <option key={o} value={o} className="bg-light-bg dark:bg-dark-bg">{o}</option>
                                 ))}
                             </select>
                         );
@@ -196,7 +196,7 @@ export default function PropertiesHeader({ schema, content, onUpdateContent, onS
                     }
 
                     return (
-                        <div key={`${field.name}-${idx}`}
+                        <div key={field.name}
                             className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg
                                        hover:bg-dark-bg/[0.03] dark:hover:bg-white/[0.03]
                                        transition-colors group/prop">

@@ -604,7 +604,7 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
                                         >
                                             {suggestedTags.map((tagMatch, idx) => (
                                                 <button
-                                                    key={tagMatch || idx}
+                                                    key={tagMatch}
                                                     onClick={() => {
                                                         setTagInputValue(tagMatch);
                                                         tagInputRef.current?.focus();
@@ -654,8 +654,8 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
                 {/* ── Tags List (Below Title) ── */}
                 {note.tags && note.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mb-6">
-                        {note.tags.map((tag, i) => (
-                            <div key={`${tag}-${i}`} className="group/pill relative flex items-center bg-dark-bg/5 dark:bg-light-bg/5 text-dark-bg/70 dark:text-light-bg/70 px-2 py-1 md:py-0.5 rounded text-xs font-medium border border-dark-bg/2 dark:border-light-bg/2 transition-colors hover:bg-dark-bg/10 dark:hover:bg-light-bg/10">
+                        {note.tags.map(tag => (
+                            <div key={tag} className="group/pill relative flex items-center bg-dark-bg/5 dark:bg-light-bg/5 text-dark-bg/70 dark:text-light-bg/70 px-2 py-1 md:py-0.5 rounded text-xs font-medium border border-dark-bg/2 dark:border-light-bg/2 transition-colors hover:bg-dark-bg/10 dark:hover:bg-light-bg/10">
                                 <span>#{tag}</span>
                                 <button
                                     onClick={() => handleRemoveTag(tag)}

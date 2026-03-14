@@ -134,8 +134,8 @@ export function CommandPalette({ onSelectNote }: CommandPaletteProps) {
                                         </div>
                                         {result.tags && result.tags.length > 0 && (
                                             <div className="flex items-center gap-1 opacity-80 flex-wrap">
-                                                {result.tags.map((t, i) => (
-                                                    <span key={`${t}-${i}`} className="px-1.5 py-0.5 rounded bg-dark-bg/5 dark:bg-light-bg/5 text-[10px] font-medium border border-dark-bg/5 dark:border-light-bg/5 text-dark-bg dark:text-light-bg truncate max-w-[80px]">#{t}</span>
+                                                {result.tags.map(t => (
+                                                    <span key={t} className="px-1.5 py-0.5 rounded bg-dark-bg/5 dark:bg-light-bg/5 text-[10px] font-medium border border-dark-bg/5 dark:border-light-bg/5 text-dark-bg dark:text-light-bg truncate max-w-[80px]">#{t}</span>
                                                 ))}
                                             </div>
                                         )}
