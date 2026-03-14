@@ -15,11 +15,11 @@ import { SmilePlus, X, Tag, Plus, Lock, ArrowRight, CloudDownload, Cloud } from 
 import { mirage } from 'ldrs';
 mirage.register();
 import type { SyncStatus } from '../App';
-import { editorViewOptionsCtx, editorViewCtx } from '@milkdown/kit/core';
+import { editorViewOptionsCtx, editorViewCtx, parserCtx } from '@milkdown/kit/core';
+import { TextSelection } from '@milkdown/prose/state';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
 import { ProsemirrorAdapterProvider, useNodeViewFactory } from '@prosemirror-adapter/react';
 import { $view } from '@milkdown/kit/utils';
-import { replaceAll } from '@milkdown/kit/utils';
 import { remarkDirectivePlugin, dashboardNode } from '../plugins/dashboardNode';
 import { DashboardNodeView } from '../plugins/DashboardNodeView';
 import { DashboardFolderPicker } from './DashboardFolderPicker';
@@ -74,7 +74,22 @@ function CrepeBodyInner({ content, noteId, onSave, onSelectNote }: CrepeBodyProp
                 const editor = get();
                 // When we have new content from the cloud or "use cloud version",
                 // we gracefully replace the editor text without unmounting plugins
-                editor.action(replaceAll(e.detail.content));
+                editor.action((ctx) => {
+                    const view = ctx.get(editorViewCtx);
+                    const parser = ctx.get(parserCtx);
+                    const doc = parser(e.detail.content);
+                    
+                    if (!doc) return;
+                    
+                    const state = view.state;
+                    let tr = state.tr.replaceWith(0, state.doc.content.size, doc.content);
+                    
+                    // Explicitly set selection to the start of the new document to avoid RangeError
+                    // if the previous selection is out of bounds in the newly generated document context
+                    tr = tr.setSelection(TextSelection.atStart(tr.doc));
+                    tr = tr.setMeta('addToHistory', false);
+                    view.dispatch(tr);
+                });
             }
         };
         window.addEventListener('keim_editor_replace_content', handleSyncReplace as EventListener);
