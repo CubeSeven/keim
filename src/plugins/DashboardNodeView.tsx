@@ -14,7 +14,7 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
     };
 
     return (
-        <div className="dashboard-node pt-6 pb-6 group">
+        <div className="dashboard-node py-2 group">
             {/* Title bar — visible only on hover */}
             <div className="flex items-center justify-between px-1 pb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                 <div className="flex items-center gap-2 text-dark-bg/40 dark:text-light-bg/35 select-none">

@@ -244,7 +244,7 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
                 id: 'name',
                 header: () => 'Name',
                 minSize: 180,
-                size: 250,
+                // Removed 'size' completely. TanStack will now auto-fit to content by default
                 cell: info => {
                     const note = info.row.original;
                     return (
@@ -356,7 +356,7 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
 
 
     return (
-        <div className="rounded-xl overflow-hidden bg-light-ui/40 dark:bg-dark-ui/40 backdrop-blur-md border border-black/5 dark:border-white/5 ring-1 ring-black/5 dark:ring-white/10 flex flex-col">
+        <div className="rounded-lg overflow-hidden bg-light-ui/40 dark:bg-dark-ui/40 backdrop-blur-md border border-black/5 dark:border-white/5 ring-1 ring-black/5 dark:ring-white/10 flex flex-col">
             <div style={{ overflowX: 'auto', width: '100%' }} className="scrollbar-thin scrollbar-thumb-light-border dark:scrollbar-thumb-dark-border">
                 <table style={{
                     borderCollapse: 'collapse', fontSize: '0.84rem',
@@ -375,9 +375,11 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
                                                 letterSpacing: '0.06em', textTransform: 'uppercase',
                                                 borderRight: isNameCol ? BD : 'none',
                                                 borderLeft: !isNameCol && header.index > 0 ? BD : 'none',
-                                                position: 'relative'
+                                                position: isNameCol ? 'sticky' : 'relative',
+                                                left: isNameCol ? 0 : 'auto',
+                                                zIndex: isNameCol ? 10 : 1 // Header needs higher Z than sticky body cells
                                             }}
-                                            className={`group hover:bg-black/5 dark:hover:bg-white/5 transition-colors ${isNameCol ? 'sticky left-0 z-10 bg-light-ui dark:bg-[#18181b]' : ''}`}
+                                            className={`group hover:bg-black/5 dark:hover:bg-white/5 transition-colors ${isNameCol ? 'bg-light-bg/95 dark:bg-dark-bg/95 backdrop-blur-sm' : ''}`}
                                         >
                                             <div 
                                                 className="flex items-center justify-between gap-2 h-full cursor-pointer select-none"
@@ -466,10 +468,10 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
             </div>
 
             {/* Premium Table Footer Actions */}
-            <div className="border-t border-black/5 dark:border-white/5 bg-light-ui/50 dark:bg-dark-ui/50 p-2 flex items-center justify-between">
+            <div className="border-t border-black/5 dark:border-white/5 bg-light-ui/50 dark:bg-dark-ui/50 !px-4 !py-3 flex items-center justify-between">
                 <button
                     onClick={handleAddNote}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-dark-bg/60 dark:text-light-bg/60 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-md transition-colors"
+                    className="flex items-center gap-1.5 !px-3 !py-1.5 text-xs font-semibold text-dark-bg/70 dark:text-light-bg/70 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-md transition-colors"
                 >
                     <Plus size={14} /> New Note
                 </button>
