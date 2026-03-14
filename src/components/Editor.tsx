@@ -8,7 +8,7 @@ import { ENABLE_SMART_PROPS } from '../constants';
 import { parseYamlFrontmatter, serializeYamlFrontmatter } from '../lib/smartProps';
 import PropertiesHeader from './PropertiesHeader';
 
-import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react';
+import { Milkdown, MilkdownProvider, useEditor, useInstance } from '@milkdown/react';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import EmojiPicker from 'emoji-picker-react';
 import { SmilePlus, X, Tag, Plus, Lock, ArrowRight, CloudDownload, Cloud } from 'lucide-react';
@@ -19,6 +19,7 @@ import { editorViewOptionsCtx, editorViewCtx } from '@milkdown/kit/core';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
 import { ProsemirrorAdapterProvider, useNodeViewFactory } from '@prosemirror-adapter/react';
 import { $view } from '@milkdown/kit/utils';
+import { replaceAll } from '@milkdown/kit/utils';
 import { remarkDirectivePlugin, dashboardNode } from '../plugins/dashboardNode';
 import { DashboardNodeView } from '../plugins/DashboardNodeView';
 import { DashboardFolderPicker } from './DashboardFolderPicker';
@@ -63,6 +64,22 @@ function CrepeBodyInner({ content, noteId, onSave, onSelectNote }: CrepeBodyProp
     useEffect(() => {
         onSelectNoteRef.current = onSelectNote;
     }, [onSelectNote]);
+
+    const [loading, get] = useInstance();
+
+    // Listen for seamless cloud sync replaces (instead of remounting the editor)
+    useEffect(() => {
+        const handleSyncReplace = (e: CustomEvent) => {
+            if (e.detail.noteId === noteId && !loading && get()) {
+                const editor = get();
+                // When we have new content from the cloud or "use cloud version",
+                // we gracefully replace the editor text without unmounting plugins
+                editor.action(replaceAll(e.detail.content));
+            }
+        };
+        window.addEventListener('keim_editor_replace_content', handleSyncReplace as EventListener);
+        return () => window.removeEventListener('keim_editor_replace_content', handleSyncReplace as EventListener);
+    }, [noteId, loading, get]);
 
     // Listen for the custom dashboard insert event from the slash menu
     useEffect(() => {
@@ -237,7 +254,6 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
     [note?.parentId]);
     const [title, setTitle] = useState('');
     const saveTimeoutRef = useRef<number | null>(null);
-    const [syncRevision, setSyncRevision] = useState(0);
     // Conflict state: set when sync wants to overwrite a note the user is actively editing
     const [conflictPending, setConflictPending] = useState(false);
     // Toast: briefly shown after a non-conflicting cloud update
@@ -388,7 +404,15 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
                     setConflictPending(true);
                     return;
                 }
-                setSyncRevision(r => r + 1);
+                
+                db.contents.get(noteId).then(contentObj => {
+                    const newContent = contentObj?.content || '';
+                    contentBuffer.set(noteId, newContent);
+                    window.dispatchEvent(new CustomEvent('keim_editor_replace_content', {
+                        detail: { noteId, content: newContent }
+                    }));
+                });
+
                 // Show a brief "Updated from cloud" toast for non-conflicting updates
                 if (cloudToastTimer.current) window.clearTimeout(cloudToastTimer.current);
                 setCloudUpdateToast(true);
@@ -540,10 +564,15 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
         }
     };
     const handleUseCloud = () => {
-        // User accepts cloud version — clear buffer and re-mount editor with cloud content
+        // User accepts cloud version — clear buffer and seamlessly update editor text
         contentBuffer.delete(noteId);
         setConflictPending(false);
-        setSyncRevision(r => r + 1);
+        db.contents.get(noteId).then(contentObj => {
+            const newContent = contentObj?.content || '';
+            window.dispatchEvent(new CustomEvent('keim_editor_replace_content', {
+                detail: { noteId, content: newContent }
+            }));
+        });
     };
 
     return (
@@ -776,7 +805,7 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
                 )}
 
                 {/* ── Editor body — same column, no extra wrappers ── */}
-                <div className="milkdown-wrapper" key={`${noteId}-${syncRevision}`}>
+                <div className="milkdown-wrapper" key={noteId}>
                     <MilkdownProvider>
                         <CrepeBody
                             noteId={noteId}
