@@ -110,16 +110,21 @@ export default function NavigationDock({ onAddNote, onAddFolder, isSidebarOpen, 
                 <Folder size={20} strokeWidth={1.5} />
             </motion.button>
 
-            {/* Sync indicator — only visible during active sync states AND when sidebar is closed */}
-            {showSync && !isSidebarOpen && (
-                <>
-                    <div className={`
-                        bg-dark-bg/10 dark:bg-light-bg/10 mx-1 opacity-50
-                        ${isSidebarOpen ? 'w-6 h-px md:w-px md:h-6' : 'w-px h-6'}
-                    `}></div>
-                    <DockSyncIndicator status={syncStatus} onSync={onSync} />
-                </>
-            )}
+            {/* Sync indicator — smoothly expands out when visible */}
+            <AnimatePresence>
+                {showSync && !isSidebarOpen && (
+                    <motion.div
+                        initial={{ width: 0, opacity: 0, overflow: 'hidden' }}
+                        animate={{ width: 'auto', opacity: 1 }}
+                        exit={{ width: 0, opacity: 0, overflow: 'hidden' }}
+                        transition={{ duration: 0.2, ease: 'easeInOut' }}
+                        className="flex items-center justify-center"
+                    >
+                        <div className="bg-dark-bg/10 dark:bg-light-bg/10 mx-1 opacity-50 w-px h-6"></div>
+                        <DockSyncIndicator status={syncStatus} onSync={onSync} />
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </motion.div>
         </AnimatePresence>
     );
