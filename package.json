@@ -35,6 +35,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "remark-directive": "^4.0.0",
+    "unist-util-visit": "^5.1.0",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

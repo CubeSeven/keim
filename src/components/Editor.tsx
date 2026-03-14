@@ -20,7 +20,7 @@ import { TextSelection } from '@milkdown/prose/state';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
 import { ProsemirrorAdapterProvider, useNodeViewFactory } from '@prosemirror-adapter/react';
 import { $view } from '@milkdown/kit/utils';
-import { remarkDirectivePlugin, dashboardNode } from '../plugins/dashboardNode';
+import { remarkDirectivePlugin, remarkDirectiveFallbackPlugin, dashboardNode } from '../plugins/dashboardNode';
 import { DashboardNodeView } from '../plugins/DashboardNodeView';
 import { DashboardFolderPicker } from './DashboardFolderPicker';
 import 'katex/dist/katex.min.css';
@@ -222,6 +222,7 @@ function CrepeBodyInner({ content, noteId, onSave, onSelectNote }: CrepeBodyProp
                     });
                 })
                 .use(remarkDirectivePlugin)
+                .use(remarkDirectiveFallbackPlugin)
                 .use(dashboardNode)
                 .use($view(dashboardNode.node, () => factory({ 
                     component: () => <DashboardNodeView onSelectNote={(id) => onSelectNoteRef.current(id)} />,

@@ -1,7 +1,22 @@
 import { $nodeSchema, $remark } from '@milkdown/kit/utils';
 import remarkDirective from 'remark-directive';
+import { visit } from 'unist-util-visit';
 
 export const remarkDirectivePlugin = $remark('remarkDirective', () => remarkDirective);
+
+const remarkFallbackDirectives = () => (tree: any) => {
+    visit(tree, (node: any) => {
+        if (['textDirective', 'leafDirective', 'containerDirective'].includes(node.type)) {
+            if (node.name !== 'dashboard') {
+                const prefix = node.type === 'textDirective' ? ':' : node.type === 'leafDirective' ? '::' : ':::';
+                node.type = 'text';
+                node.value = `${prefix}${node.name}`;
+            }
+        }
+    });
+};
+
+export const remarkDirectiveFallbackPlugin = $remark('remarkFallbackDirectives', () => remarkFallbackDirectives);
 
 export const dashboardNode = $nodeSchema('dashboard', () => ({
     group: 'block',
