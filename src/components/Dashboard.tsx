@@ -133,6 +133,38 @@ const HP = '11px 18px'; // header padding
 const CP = '10px 18px'; // cell padding
 const BD = '1px solid rgba(128,128,128,0.12)';
 
+// ─── View Switcher Strip (shown above Gallery / Calendar) ───────────────────
+function ViewSwitcherStrip({ viewMode, hasDateField, switchView }: {
+    viewMode: ViewMode;
+    hasDateField: boolean;
+    switchView: (m: ViewMode) => void;
+}) {
+    return (
+        <div className="flex items-center justify-end gap-0.5 px-3 py-1.5 border-b border-black/5 dark:border-white/5 opacity-0 group-hover/dash:opacity-100 transition-opacity duration-150">
+            {(['table', 'gallery', 'calendar'] as const)
+                .filter(m => m !== 'calendar' || hasDateField)
+                .map(mode => {
+                    const Icon = mode === 'table' ? LayoutList : mode === 'gallery' ? LayoutGrid : CalendarDays;
+                    const label = mode === 'table' ? 'Table' : mode === 'gallery' ? 'Gallery' : 'Calendar';
+                    return (
+                        <button
+                            key={mode}
+                            onClick={() => switchView(mode)}
+                            title={label}
+                            className={`p-1.5 rounded-md transition-colors ${
+                                viewMode === mode
+                                    ? 'bg-dark-bg/10 dark:bg-white/10 text-dark-bg dark:text-light-bg'
+                                    : 'text-dark-bg/40 dark:text-light-bg/40 hover:text-dark-bg/80 dark:hover:text-light-bg/80 hover:bg-dark-bg/5 dark:hover:bg-white/5'
+                            }`}
+                        >
+                            <Icon size={12} />
+                        </button>
+                    );
+                })}
+        </div>
+    );
+}
+
 // ─── Calendar View ─────────────────────────────────────────────────────────────
 function CalendarView({
     notes,
@@ -280,39 +312,44 @@ function GalleryView({
                 <button
                     key={row.item.id}
                     onClick={() => onSelectNote(row.item.id!)}
-                    className="group/card text-left rounded-xl border border-black/8 dark:border-white/8 bg-light-bg/80 dark:bg-dark-bg/70 backdrop-blur-md hover:border-black/15 dark:hover:border-white/15 hover:-translate-y-0.5 hover:shadow-lg dark:hover:shadow-black/30 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/20 dark:focus:ring-white/20"
-                    style={{ padding: '14px 16px' }}
+                    className="group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-light-bg/75 dark:bg-dark-ui/80"
+                    style={{
+                        padding: '16px',
+                        backdropFilter: 'blur(16px)',
+                        WebkitBackdropFilter: 'blur(16px)',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
+                    }}
                 >
                     {/* Icon + Title */}
-                    <div className="flex items-start gap-2 mb-3">
+                    <div className="flex items-start gap-2.5 mb-3">
                         {row.item.icon && (
                             <span style={{ fontSize: '1.5rem', lineHeight: 1, flexShrink: 0 }}>{row.item.icon}</span>
                         )}
                         <span
-                            className="text-sm font-semibold text-dark-bg dark:text-light-bg leading-tight group-hover/card:opacity-80 transition-opacity"
+                            className="text-sm font-semibold text-dark-bg dark:text-light-bg leading-snug"
                             style={{ overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
                         >
                             {row.item.title || 'Untitled'}
                         </span>
                     </div>
 
+                    {/* Divider */}
+                    {schema.fields.some(f => !!row.meta[f.name]) && (
+                        <div className="border-t border-black/8 dark:border-white/8 mb-2.5" />
+                    )}
+
                     {/* Meta Fields */}
                     {schema.fields.length > 0 && (
-                        <div className="space-y-1">
+                        <div className="space-y-1.5">
                             {schema.fields.map(f => {
                                 const val = row.meta[f.name] || '';
                                 if (!val) return null;
                                 return (
-                                    <div key={f.name} className="flex items-baseline gap-1.5 min-w-0">
-                                        <span
-                                            className="text-[10px] font-semibold uppercase tracking-widest text-dark-bg/35 dark:text-light-bg/35 shrink-0"
-                                            style={{ minWidth: 0 }}
-                                        >
+                                    <div key={f.name} className="flex items-center justify-between gap-2 min-w-0">
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-dark-bg/35 dark:text-light-bg/30 shrink-0">
                                             {f.name}
                                         </span>
-                                        <span
-                                            className="text-[11px] text-dark-bg/60 dark:text-light-bg/55 truncate"
-                                        >
+                                        <span className="text-[11px] font-medium text-dark-bg/65 dark:text-light-bg/60 truncate text-right">
                                             {f.type === 'checkbox' ? (val === 'true' ? '✓' : '✗') : val}
                                         </span>
                                     </div>
@@ -562,39 +599,27 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
     );
 
 
-    return (
-        <div className="rounded-lg overflow-hidden bg-light-ui/40 dark:bg-dark-ui/40 backdrop-blur-md border border-black/5 dark:border-white/5 ring-1 ring-black/5 dark:ring-white/10 flex flex-col">
+    // Whether the schema has any date field (for conditional Calendar tab)
+    const hasDateField = schema?.fields.some(f => f.type === 'date') ?? false;
 
-            {/* ── View Switcher Toolbar ── */}
-            <div className="flex items-center justify-end gap-1 px-3 py-2 border-b border-black/5 dark:border-white/5 bg-dark-bg/[0.02] dark:bg-white/[0.02]">
-                {(['table', 'gallery', 'calendar'] as const).map(mode => {
-                    const Icon = mode === 'table' ? LayoutList : mode === 'gallery' ? LayoutGrid : CalendarDays;
-                    const label = mode === 'table' ? 'Table' : mode === 'gallery' ? 'Gallery' : 'Calendar';
-                    return (
-                        <button
-                            key={mode}
-                            onClick={() => switchView(mode)}
-                            title={label}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                                viewMode === mode
-                                    ? 'bg-dark-bg/10 dark:bg-white/10 text-dark-bg dark:text-light-bg'
-                                    : 'text-dark-bg/40 dark:text-light-bg/40 hover:text-dark-bg/70 dark:hover:text-light-bg/70 hover:bg-dark-bg/5 dark:hover:bg-white/5'
-                            }`}
-                        >
-                            <Icon size={13} />
-                            {label}
-                        </button>
-                    );
-                })}
-            </div>
+    return (
+        <div className="group/dash rounded-lg overflow-hidden bg-light-ui/40 dark:bg-dark-ui/40 backdrop-blur-md border border-black/5 dark:border-white/5 ring-1 ring-black/5 dark:ring-white/10 flex flex-col">
+
+
             {/* ── Gallery View ── */}
             {viewMode === 'gallery' && (
-                <GalleryView notes={notes} schema={schema!} onSelectNote={onSelectNote} />
+                <>
+                    <ViewSwitcherStrip viewMode={viewMode} hasDateField={hasDateField} switchView={switchView} />
+                    <GalleryView notes={notes} schema={schema!} onSelectNote={onSelectNote} />
+                </>
             )}
 
             {/* ── Calendar View ── */}
             {viewMode === 'calendar' && (
-                <CalendarView notes={notes} schema={schema!} onSelectNote={onSelectNote} />
+                <>
+                    <ViewSwitcherStrip viewMode={viewMode} hasDateField={hasDateField} switchView={switchView} />
+                    <CalendarView notes={notes} schema={schema!} onSelectNote={onSelectNote} />
+                </>
             )}
 
             {/* ── Table View ── */}
@@ -619,7 +644,7 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
                                                 borderLeft: !isNameCol && header.index > 0 ? BD : 'none',
                                                 position: isNameCol ? 'sticky' : 'relative',
                                                 left: isNameCol ? 0 : 'auto',
-                                                zIndex: isNameCol ? 10 : 1 // Header needs higher Z than sticky body cells
+                                                zIndex: isNameCol ? 10 : 1
                                             }}
                                             className={`group hover:bg-black/5 dark:hover:bg-white/5 transition-colors ${isNameCol ? 'bg-light-bg/95 dark:bg-dark-bg/95 backdrop-blur-sm' : ''}`}
                                         >
@@ -648,6 +673,35 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
                                             >
                                                 <div className="w-[1px] h-4 bg-black/20 dark:bg-white/20" />
                                             </div>
+
+                                            {/* View Switcher — only on last header cell, visible on dashboard hover */}
+                                            {header.index === headerGroup.headers.length - 1 && (
+                                                <div
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/dash:opacity-100 transition-opacity duration-150 z-30"
+                                                    onClick={e => e.stopPropagation()}
+                                                >
+                                                    {(['table', 'gallery', 'calendar'] as const)
+                                                        .filter(m => m !== 'calendar' || hasDateField)
+                                                        .map(mode => {
+                                                        const Icon = mode === 'table' ? LayoutList : mode === 'gallery' ? LayoutGrid : CalendarDays;
+                                                        const label = mode === 'table' ? 'Table' : mode === 'gallery' ? 'Gallery' : 'Calendar';
+                                                        return (
+                                                            <button
+                                                                key={mode}
+                                                                onClick={() => switchView(mode)}
+                                                                title={label}
+                                                                className={`p-1.5 rounded-md transition-colors ${
+                                                                    viewMode === mode
+                                                                        ? 'bg-dark-bg/12 dark:bg-white/12 text-dark-bg dark:text-light-bg'
+                                                                        : 'text-dark-bg/40 dark:text-light-bg/40 hover:text-dark-bg/80 dark:hover:text-light-bg/80 hover:bg-dark-bg/6 dark:hover:bg-white/6'
+                                                                }`}
+                                                            >
+                                                                <Icon size={12} />
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
                                         </th>
                                     );
                                 })}
