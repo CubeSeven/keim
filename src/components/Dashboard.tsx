@@ -321,15 +321,9 @@ function GalleryView({
                                         <span className="text-[10px] font-bold uppercase tracking-widest text-dark-bg/35 dark:text-light-bg/30 shrink-0">
                                             {f.name}
                                         </span>
-                                        {f.type === 'select' ? (
-                                            <span className="text-[10px] font-medium bg-black/5 dark:bg-white/10 px-2 py-0.5 rounded-md text-dark-bg/80 dark:text-light-bg/80 border border-black/10 dark:border-white/10 truncate max-w-[140px]">
-                                                {val}
-                                            </span>
-                                        ) : (
-                                            <span className="text-[11px] font-medium text-dark-bg/65 dark:text-light-bg/60 truncate text-right">
-                                                {f.type === 'checkbox' ? (val === 'true' ? '✓' : '✗') : val}
-                                            </span>
-                                        )}
+                                        <span className="text-[11px] font-medium text-dark-bg/65 dark:text-light-bg/60 truncate text-right">
+                                            {f.type === 'checkbox' ? (val === 'true' ? '✓' : '✗') : val}
+                                        </span>
                                     </div>
                                 );
                             })}
@@ -382,29 +376,7 @@ function KanbanView({
 
     const handleDragStart = (e: React.DragEvent, noteId: number) => {
         e.dataTransfer.setData('text/plain', noteId.toString());
-        e.dataTransfer.effectAllowed = 'move';
-        
-        // Create a custom 100% opaque ghost clone so the dragged card doesn't look translucent
-        const target = e.currentTarget as HTMLElement;
-        const rect = target.getBoundingClientRect();
-        const clone = target.cloneNode(true) as HTMLElement;
-        clone.id = 'drag-ghost';
-        clone.style.width = `${rect.width}px`;
-        clone.style.height = `${rect.height}px`;
-        clone.style.position = 'absolute';
-        clone.style.top = '-9999px';
-        clone.style.left = '-9999px';
-        clone.style.opacity = '1';
-        clone.style.transform = 'translateZ(0)'; // force hardware acceleration
-        clone.style.pointerEvents = 'none';
-
-        document.body.appendChild(clone);
-        e.dataTransfer.setDragImage(clone, e.clientX - rect.left, e.clientY - rect.top);
-        
-        // Clean up immediately after the browser captures the drag image
-        requestAnimationFrame(() => {
-            if (document.body.contains(clone)) document.body.removeChild(clone);
-        });
+        // Optional: styling drag image or ghost
     };
 
     const handleDrop = (e: React.DragEvent, targetColumn: string) => {
@@ -424,17 +396,17 @@ function KanbanView({
     };
 
     return (
-        <div className="flex h-[600px] overflow-x-auto overflow-y-hidden p-6 gap-6 scrollbar-thin scrollbar-thumb-light-border dark:scrollbar-thumb-dark-border">
+        <div className="flex h-[600px] overflow-x-auto overflow-y-hidden p-4 gap-4 scrollbar-thin scrollbar-thumb-light-border dark:scrollbar-thumb-dark-border">
             {Object.entries(columns).map(([colName, colNotes]) => (
                 <div 
                     key={colName}
-                    className="flex flex-col flex-shrink-0 w-[300px] bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5 overflow-hidden"
+                    className="flex flex-col flex-shrink-0 w-[280px] bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5 overflow-hidden"
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, colName)}
                 >
                     {/* Column Header */}
                     <div className="flex items-center justify-between px-4 py-3 border-b border-black/5 dark:border-white/5 bg-light-bg/50 dark:bg-dark-bg/50 backdrop-blur-sm">
-                        <span className="text-[11px] font-bold uppercase tracking-widest text-dark-bg/75 dark:text-light-bg/75 bg-black/5 dark:bg-white/10 px-2.5 py-1 rounded-md border border-black/5 dark:border-white/5">
+                        <span className="text-[11px] font-bold uppercase tracking-widest text-dark-bg/60 dark:text-light-bg/60">
                             {colName}
                         </span>
                         <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-dark-bg/40 dark:text-light-bg/40">
@@ -450,21 +422,21 @@ function KanbanView({
                                 draggable="true"
                                 onDragStart={(e) => handleDragStart(e, row.item.id!)}
                                 onClick={() => onSelectNote(row.item.id!)}
-                                className="w-full group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-light-bg/100 dark:bg-dark-ui/95 cursor-grab active:cursor-grabbing"
+                                className="w-full group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-light-bg/75 dark:bg-dark-ui/80 cursor-grab active:cursor-grabbing"
                                 style={{
-                                    padding: '22px',
+                                    padding: '16px',
                                     backdropFilter: 'blur(16px)',
                                     WebkitBackdropFilter: 'blur(16px)',
                                     boxShadow: '0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
                                 }}
                             >
                                 {/* Icon + Title */}
-                                <div className="flex items-start gap-2.5 mb-4">
+                                <div className="flex items-start gap-2.5 mb-3">
                                     {row.item.icon && (
                                         <span style={{ fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>{row.item.icon}</span>
                                     )}
                                     <span
-                                        className="text-[14px] font-semibold text-dark-bg dark:text-light-bg leading-snug"
+                                        className="text-[13px] font-semibold text-dark-bg dark:text-light-bg leading-snug"
                                         style={{ overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
                                     >
                                         {row.item.title || 'Untitled'}
@@ -475,27 +447,21 @@ function KanbanView({
                                 {schema.fields.length > 1 && (
                                     <>
                                         {schema.fields.some(f => f.name !== selectField.name && !!row.meta[f.name]) && (
-                                            <div style={{ borderTop: '1px solid rgba(128,128,128,0.12)', margin: '14px 0' }} />
+                                            <div style={{ borderTop: '1px solid rgba(128,128,128,0.12)', margin: '10px 0' }} />
                                         )}
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                             {schema.fields.map(f => {
                                                 if (f.name === selectField.name) return null; // Hide grouping field on the card itself
                                                 const val = row.meta[f.name] || '';
                                                 if (!val) return null;
                                                 return (
-                                                    <div key={f.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '4px 0' }}>
-                                                        <span className="text-[10px] font-bold uppercase tracking-widest text-dark-bg/35 dark:text-light-bg/30 shrink-0">
+                                                    <div key={f.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '2px 0' }}>
+                                                        <span className="text-[9px] font-bold uppercase tracking-widest text-dark-bg/35 dark:text-light-bg/30 shrink-0">
                                                             {f.name}
                                                         </span>
-                                                        {f.type === 'select' ? (
-                                                            <span className="text-[10px] font-medium bg-black/5 dark:bg-white/10 px-2 py-0.5 rounded-md text-dark-bg/80 dark:text-light-bg/80 border border-black/10 dark:border-white/10 truncate max-w-[140px]">
-                                                                {val}
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-[11px] font-medium text-dark-bg/65 dark:text-light-bg/60 truncate text-right">
-                                                                {f.type === 'checkbox' ? (val === 'true' ? '✓' : '✗') : val}
-                                                            </span>
-                                                        )}
+                                                        <span className="text-[10px] font-medium text-dark-bg/65 dark:text-light-bg/60 truncate text-right">
+                                                            {f.type === 'checkbox' ? (val === 'true' ? '✓' : '✗') : val}
+                                                        </span>
                                                     </div>
                                                 );
                                             })}
@@ -681,26 +647,13 @@ export default function Dashboard({ folderName, onSelectNote, viewMode, onHasDat
                                     className="accent-indigo-500" />
                             </div>;
                     } else if (f.type === 'select') {
-                        return (
-                            <div style={{ padding: CP, display: 'flex', alignItems: 'center', height: '100%' }}>
-                                <select value={val}
-                                    onChange={e => handleCellChange(row.item.id!, f.name, e.target.value)}
-                                    style={{
-                                        ...baseInput,
-                                        width: 'fit-content',
-                                        cursor: 'pointer',
-                                        padding: val ? '2px 8px' : '0',
-                                    }}
-                                    className={`text-[11px] font-medium transition-colors outline-none focus:outline-none ${
-                                        val 
-                                            ? 'bg-black/5 dark:bg-white/10 text-dark-bg/80 dark:text-light-bg/80 rounded-md border border-black/10 dark:border-white/10' 
-                                            : 'text-dark-bg/40 dark:text-light-bg/40 bg-transparent'
-                                    }`}>
-                                    <option value="" disabled hidden>—</option>
-                                    {(f.options || []).map((o, i) => <option key={`${o}-${i}`} value={o}>{o}</option>)}
-                                </select>
-                            </div>
-                        );
+                        return <select value={val}
+                                onChange={e => handleCellChange(row.item.id!, f.name, e.target.value)}
+                                style={{ ...baseInput, padding: CP, display: 'block', cursor: 'pointer' }}
+                                className="text-dark-bg/80 dark:text-light-bg/80 w-full bg-transparent">
+                                <option value="" disabled hidden>—</option>
+                                {(f.options || []).map((o, i) => <option key={`${o}-${i}`} value={o}>{o}</option>)}
+                            </select>;
                     } else if (f.type === 'relation') {
                         return <div style={{ padding: CP, height: '100%', display: 'flex', alignItems: 'center' }}>
                                 {val ? (
