@@ -284,7 +284,7 @@ function GalleryView({
                 <button
                     key={row.item.id}
                     onClick={() => onSelectNote(row.item.id!)}
-                    className="group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-light-bg/75 dark:bg-dark-ui/80"
+                    className="group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-white/85 dark:bg-white/[0.08]"
                     style={{
                         padding: '22px',
                         backdropFilter: 'blur(16px)',
@@ -400,7 +400,7 @@ function KanbanView({
             {Object.entries(columns).map(([colName, colNotes]) => (
                 <div 
                     key={colName}
-                    className="flex flex-col flex-shrink-0 w-[280px] bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5 overflow-hidden"
+                    className="flex flex-col flex-shrink-0 w-[320px] bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5 overflow-hidden"
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, colName)}
                 >
@@ -415,16 +415,16 @@ function KanbanView({
                     </div>
 
                     {/* Column Body (Scrollable if too many cards) */}
-                    <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-light-border dark:scrollbar-thumb-dark-border">
+                    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-light-border dark:scrollbar-thumb-dark-border" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                         {colNotes.map(row => (
                             <button
                                 key={row.item.id}
                                 draggable="true"
                                 onDragStart={(e) => handleDragStart(e, row.item.id!)}
                                 onClick={() => onSelectNote(row.item.id!)}
-                                className="w-full group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-light-bg/75 dark:bg-dark-ui/80 cursor-grab active:cursor-grabbing"
+                                className="w-full group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-white/85 dark:bg-white/[0.08] cursor-grab active:cursor-grabbing"
                                 style={{
-                                    padding: '16px',
+                                    padding: '20px',
                                     backdropFilter: 'blur(16px)',
                                     WebkitBackdropFilter: 'blur(16px)',
                                     boxShadow: '0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
