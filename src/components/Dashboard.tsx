@@ -5,7 +5,7 @@ import type { SmartSchema } from '../lib/db';
 import { updateSearchIndex, miniSearch } from '../lib/search';
 import { triggerAutoSync } from '../lib/sync';
 import { getStorageMode, writeNoteToVault, notePathFromTitle } from '../lib/vault';
-import { FileText, Plus, ArrowDown, ArrowUp, ArrowUpDown, CalendarDays } from 'lucide-react';
+import { FileText, ArrowDown, ArrowUp, ArrowUpDown, CalendarDays } from 'lucide-react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -284,9 +284,11 @@ function GalleryView({
                 <button
                     key={row.item.id}
                     onClick={() => onSelectNote(row.item.id!)}
-                    className="group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-white dark:bg-dark-ui"
+                    className="group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-white/85 dark:bg-white/[0.08]"
                     style={{
                         padding: '22px',
+                        backdropFilter: 'blur(16px)',
+                        WebkitBackdropFilter: 'blur(16px)',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
                     }}
                 >
@@ -426,9 +428,11 @@ function KanbanView({
                                 draggable="true"
                                 onDragStart={(e) => handleDragStart(e, row.item.id!)}
                                 onClick={() => onSelectNote(row.item.id!)}
-                                className="w-full group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-white dark:bg-dark-ui cursor-grab active:cursor-grabbing"
+                                className="w-full group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-white/85 dark:bg-white/[0.08] cursor-grab active:cursor-grabbing"
                                 style={{
                                     padding: '20px',
+                                    backdropFilter: 'blur(16px)',
+                                    WebkitBackdropFilter: 'blur(16px)',
                                     boxShadow: '0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
                                 }}
                             >
@@ -569,31 +573,6 @@ export default function Dashboard({ folderName, onSelectNote, viewMode, onHasDat
         window.addEventListener('keim_note_content_updated', handleNoteUpdated);
         return () => window.removeEventListener('keim_note_content_updated', handleNoteUpdated);
     }, []);
-
-    const handleAddNote = async () => {
-      if (!targetFolder?.id) return;
-      const { addItem } = await import('../lib/db');
-      const id = await addItem({ parentId: targetFolder.id, type: 'note', title: 'New Note' }, '');
-      localStorage.setItem('keim_has_user_edits', 'true');
-  
-      if (getStorageMode() === 'vault') {
-        try {
-          const { writeNoteToVault, notePathFromTitle } = await import('../lib/vault');
-          const { getItemPath } = await import('../lib/db');
-          const allItems = await db.items.toArray();
-          const parentPath = getItemPath(targetFolder.id, allItems);
-          const notePath = notePathFromTitle('New Note', parentPath);
-          await writeNoteToVault(notePath, '');
-        } catch (e) {
-          console.warn('Could not write new note to vault immediately', e);
-        }
-      }
-      
-      triggerAutoSync();
-      onSelectNote(id as number);
-      // Give it time to render the editor then focus title
-      setTimeout(() => window.dispatchEvent(new CustomEvent('keim_focus_title', { detail: id })), 150);
-    };
 
     const columns = useMemo(() => {
         if (!schema) return [];
@@ -844,19 +823,6 @@ export default function Dashboard({ folderName, onSelectNote, viewMode, onHasDat
                 </table>
             </div>
             )}
-
-            {/* Premium Table Footer Actions */}
-            <div className="border-t border-black/5 dark:border-white/5 bg-light-ui/50 dark:bg-dark-ui/50 !px-4 !py-3 flex items-center justify-between">
-                <button
-                    onClick={handleAddNote}
-                    className="flex items-center gap-1.5 !px-3 !py-1.5 text-xs font-semibold text-dark-bg/70 dark:text-light-bg/70 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-md transition-colors"
-                >
-                    <Plus size={14} /> New Note
-                </button>
-                <div className="text-[10px] font-medium text-dark-bg/30 dark:text-light-bg/30 uppercase tracking-widest px-2">
-                    {notes.length} Item{notes.length !== 1 ? 's' : ''}
-                </div>
-            </div>
         </div>
     );
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNodeViewContext } from '@prosemirror-adapter/react';
 import Dashboard from '../components/Dashboard';
-import { Trash2, Database, LayoutList, LayoutGrid, CalendarDays, Kanban } from 'lucide-react';
+import { Trash2, Database, LayoutList, LayoutGrid, CalendarDays, Kanban, Plus } from 'lucide-react';
 import type { ViewMode } from '../components/Dashboard';
 
 export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number) => void }) => {
@@ -26,6 +26,35 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
         }
     };
 
+    const handleAddNote = async () => {
+        const { db } = await import('../lib/db');
+        const folders = await db.items.where({ type: 'folder', title: folderName }).toArray();
+        const folder  = folders.find(f => !f.isDeleted);
+        if (!folder?.id) return;
+  
+        const { addItem, getItemPath } = await import('../lib/db');
+        const id = await addItem({ parentId: folder.id, type: 'note', title: 'New Note' }, '');
+        localStorage.setItem('keim_has_user_edits', 'true');
+    
+        const { getStorageMode, writeNoteToVault, notePathFromTitle } = await import('../lib/vault');
+        if (getStorageMode() === 'vault') {
+            try {
+                const allItems = await db.items.toArray();
+                const parentPath = getItemPath(folder.id, allItems);
+                const notePath = notePathFromTitle('New Note', parentPath);
+                await writeNoteToVault(notePath, '');
+            } catch (e) {
+                console.warn('Could not write new note to vault immediately', e);
+            }
+        }
+        
+        const { triggerAutoSync } = await import('../lib/sync');
+        triggerAutoSync();
+        
+        onSelectNote(id as number);
+        setTimeout(() => window.dispatchEvent(new CustomEvent('keim_focus_title', { detail: id })), 150);
+    };
+
     const VIEW_MODES: ViewMode[] = ['table', 'gallery'];
     if (hasDateField) VIEW_MODES.push('calendar');
     if (hasSelectField) VIEW_MODES.push('kanban');
@@ -43,6 +72,17 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
 
                 {/* Right side: view switcher + trash */}
                 <div className="flex items-center gap-1">
+                    <button
+                        onClick={handleAddNote}
+                        title="New Note"
+                        className="w-6 h-6 flex items-center justify-center rounded-md mr-1
+                                   text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300
+                                   hover:bg-indigo-500/10 dark:hover:bg-indigo-400/10
+                                   transition-all"
+                    >
+                        <Plus size={14} strokeWidth={2.5} />
+                    </button>
+
                     {VIEW_MODES.map(mode => {
                         const Icon = mode === 'table' ? LayoutList : mode === 'gallery' ? LayoutGrid : mode === 'calendar' ? CalendarDays : Kanban;
                         const label = mode === 'table' ? 'Table' : mode === 'gallery' ? 'Gallery' : mode === 'calendar' ? 'Calendar' : 'Kanban';
