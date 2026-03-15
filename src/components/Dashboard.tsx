@@ -5,7 +5,7 @@ import type { SmartSchema } from '../lib/db';
 import { updateSearchIndex, miniSearch } from '../lib/search';
 import { triggerAutoSync } from '../lib/sync';
 import { getStorageMode, writeNoteToVault, notePathFromTitle } from '../lib/vault';
-import { FileText, Plus, ArrowDown, ArrowUp, ArrowUpDown, LayoutList, LayoutGrid, CalendarDays } from 'lucide-react';
+import { FileText, Plus, ArrowDown, ArrowUp, ArrowUpDown, CalendarDays } from 'lucide-react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -17,11 +17,14 @@ import type { SortingState } from '@tanstack/react-table';
 import { DayPicker } from 'react-day-picker';
 import 'react-day-picker/style.css';
 
-type ViewMode = 'table' | 'gallery' | 'calendar';
+export type ViewMode = 'table' | 'gallery' | 'calendar';
 
 interface DashboardProps {
     folderName: string;
     onSelectNote: (id: number) => void;
+    viewMode: ViewMode;
+    switchView: (mode: ViewMode) => void;
+    onHasDateField: (has: boolean) => void;
 }
 
 type RowData = {
@@ -132,38 +135,6 @@ const CellInput = ({
 const HP = '11px 18px'; // header padding
 const CP = '10px 18px'; // cell padding
 const BD = '1px solid rgba(128,128,128,0.12)';
-
-// ─── View Switcher Strip (shown above Gallery / Calendar) ───────────────────
-function ViewSwitcherStrip({ viewMode, hasDateField, switchView }: {
-    viewMode: ViewMode;
-    hasDateField: boolean;
-    switchView: (m: ViewMode) => void;
-}) {
-    return (
-        <div className="flex items-center justify-end gap-0.5 px-3 py-1.5 border-b border-black/5 dark:border-white/5 opacity-0 group-hover/dash:opacity-100 transition-opacity duration-150">
-            {(['table', 'gallery', 'calendar'] as const)
-                .filter(m => m !== 'calendar' || hasDateField)
-                .map(mode => {
-                    const Icon = mode === 'table' ? LayoutList : mode === 'gallery' ? LayoutGrid : CalendarDays;
-                    const label = mode === 'table' ? 'Table' : mode === 'gallery' ? 'Gallery' : 'Calendar';
-                    return (
-                        <button
-                            key={mode}
-                            onClick={() => switchView(mode)}
-                            title={label}
-                            className={`p-1.5 rounded-md transition-colors ${
-                                viewMode === mode
-                                    ? 'bg-dark-bg/10 dark:bg-white/10 text-dark-bg dark:text-light-bg'
-                                    : 'text-dark-bg/40 dark:text-light-bg/40 hover:text-dark-bg/80 dark:hover:text-light-bg/80 hover:bg-dark-bg/5 dark:hover:bg-white/5'
-                            }`}
-                        >
-                            <Icon size={12} />
-                        </button>
-                    );
-                })}
-        </div>
-    );
-}
 
 // ─── Calendar View ─────────────────────────────────────────────────────────────
 function CalendarView({
@@ -364,22 +335,13 @@ function GalleryView({
 }
 
 // ─── Main Dashboard ────────────────────────────────────────────────────────────
-export default function Dashboard({ folderName, onSelectNote }: DashboardProps) {
+export default function Dashboard({ folderName, onSelectNote, viewMode, onHasDateField }: DashboardProps) {
     const [targetFolder, setTargetFolder] = useState<NoteItem | null>(null);
     const [schema, setSchema]             = useState<SmartSchema | null>(null);
     const [notes, setNotes]               = useState<RowData[]>([]);
     const [isLoading, setIsLoading]       = useState(true);
     const [hoveredRow, setHoveredRow]     = useState<number | null>(null);
     const [sorting, setSorting]           = useState<SortingState>([]);
-    const viewKey = `keim_view_${folderName}`;
-    const [viewMode, setViewMode]         = useState<ViewMode>(() => {
-        return (localStorage.getItem(viewKey) as ViewMode | null) ?? 'table';
-    });
-
-    const switchView = (mode: ViewMode) => {
-        setViewMode(mode);
-        localStorage.setItem(viewKey, mode);
-    };
 
     const loadData = useCallback(async () => {
         const folders = await db.items.where({ type: 'folder', title: folderName }).toArray();
@@ -391,6 +353,7 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
         setSchema(folderSchema);
 
         if (folderSchema) {
+            onHasDateField(folderSchema.fields.some(f => f.type === 'date'));
             const children = await db.items.where({ parentId: folder.id, type: 'note' }).toArray();
             const active   = children.filter(n => !n.isDeleted);
             const data     = await Promise.all(active.map(async n => {
@@ -599,15 +562,8 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
     );
 
 
-    // Whether the schema has any date field (for conditional Calendar tab)
-    const hasDateField = schema?.fields.some(f => f.type === 'date') ?? false;
-
     return (
-        <div className="group/dash rounded-lg overflow-hidden bg-light-ui/40 dark:bg-dark-ui/40 backdrop-blur-md border border-black/5 dark:border-white/5 ring-1 ring-black/5 dark:ring-white/10 flex flex-col">
-
-
-            {/* ── View Switcher Strip (hover-only, above all views) ── */}
-            <ViewSwitcherStrip viewMode={viewMode} hasDateField={hasDateField} switchView={switchView} />
+        <div className="rounded-lg overflow-hidden bg-light-ui/40 dark:bg-dark-ui/40 backdrop-blur-md border border-black/5 dark:border-white/5 ring-1 ring-black/5 dark:ring-white/10 flex flex-col">
 
             {/* ── Gallery View ── */}
             {viewMode === 'gallery' && (
