@@ -42,10 +42,20 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
     if (hasDateField) VIEW_MODES.push('calendar');
     if (hasSelectField) VIEW_MODES.push('kanban');
 
+    // CSS logic to break out of the 750px max-w editor container cleanly
+    // without using relative/vw hacks that trigger horizontal canvas scrolling
+    const breakoutStyle = isWide ? {
+        width: 'calc(100vw - 4rem)',
+        maxWidth: '1200px',
+        marginLeft: '50%',
+        transform: 'translateX(-50%)',
+    } : {};
+
     return (
-        <div className={`dashboard-node py-4 group transition-all duration-300 ${
-            isWide ? 'w-[90vw] max-w-[1400px] relative left-1/2 -translate-x-1/2' : ''
-        }`}>
+        <div 
+            className="dashboard-node py-4 group transition-all duration-300"
+            style={breakoutStyle}
+        >
             {/* Title bar — visible only on hover */}
             <div className="flex items-center justify-between px-1 pb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                 <div className="flex items-center gap-2 text-dark-bg/40 dark:text-light-bg/35 select-none">
