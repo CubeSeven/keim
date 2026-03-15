@@ -34,7 +34,8 @@ Expand the Smart Folder dashboards with dynamic views powered by YAML frontmatte
 ---
 
 ## 🔌 Openness & Extensibility
-*   **File-Based API Documentation:** Formally define the YAML schema and folder structure to enable external integrations (Python, Raycast).
+*   ✅ **File-Based API Documentation:** Formally defined YAML schema and folder structure — see [docs/API.md](docs/API.md).
 *   **CM6 Extension Bridge:** Allow power users to inject custom CodeMirror 6 extensions (VIM mode, custom linters, specialized widgets).
 *   **Sandboxed Plugin System:** Implement a secure, PWA-safe plugin loader for UI and logic extensions (e.g., custom property renderers or dashboard views).
 *   **Vault-Local Plugins:** Support loading plugins directly from a `.keim/plugins` folder within the user's vault for 100% portability.
+

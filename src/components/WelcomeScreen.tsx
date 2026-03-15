@@ -5,9 +5,11 @@ interface WelcomeScreenProps {
     onPickVault: () => void;
     onUseBrowserStorage: () => void;
     isPickingVault: boolean;
+    installPrompt?: any;
+    onInstallPWA?: () => void;
 }
 
-export default function WelcomeScreen({ onPickVault, onUseBrowserStorage, isPickingVault }: WelcomeScreenProps) {
+export default function WelcomeScreen({ onPickVault, onUseBrowserStorage, isPickingVault, installPrompt, onInstallPWA }: WelcomeScreenProps) {
     const fsSupported = isFileSystemSupported();
 
     return (
@@ -26,6 +28,17 @@ export default function WelcomeScreen({ onPickVault, onUseBrowserStorage, isPick
                     <p className="text-dark-bg/60 dark:text-light-bg/60 text-center text-sm">
                         Local-first notes. Your data, your device, your rules.
                     </p>
+
+                    {/* Quick PWA Download Button */}
+                    {installPrompt && (
+                        <button
+                            onClick={onInstallPWA}
+                            className="mt-2 flex items-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold uppercase tracking-widest rounded-full shadow-lg shadow-indigo-500/25 transition-all hover:scale-105 active:scale-95"
+                        >
+                            <Cloud size={14} className="animate-bounce" />
+                            Install Keim as App
+                        </button>
+                    )}
                 </div>
 
                 {/* Storage Options */}

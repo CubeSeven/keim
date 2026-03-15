@@ -237,3 +237,54 @@
 [class*="crepe-toolbar"] {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
 }
+
+/* ============================================================ */
+/* react-day-picker — monochrome theme overrides                 */
+/* ============================================================ */
+
+:root {
+  --rdp-accent-color: #000;
+  --rdp-accent-background-color: rgba(0,0,0,0.07);
+}
+
+.dark {
+  --rdp-accent-color: #fff;
+  --rdp-accent-background-color: rgba(255,255,255,0.10);
+  color-scheme: dark;
+}
+
+/* Day picker base resets */
+.rdp-root {
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif !important;
+  font-size: 0.82rem !important;
+  color: inherit !important;
+}
+
+.dark .rdp-root {
+  --rdp-day_button-border-radius: 6px;
+}
+
+/* Days that have notes: dot indicator */
+.rdp-has-notes {
+  position: relative;
+  font-weight: 700;
+}
+
+.rdp-has-notes::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+/* Dark mode: make rdp dropdowns readable */
+.dark .rdp-dropdown select {
+  background: #26272C;
+  color: #e6e6e6;
+}

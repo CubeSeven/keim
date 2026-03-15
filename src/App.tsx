@@ -219,6 +219,8 @@ function App() {
           onPickVault={handlePickVault}
           onUseBrowserStorage={handleUseBrowserStorage}
           isPickingVault={isPickingVault}
+          installPrompt={installPrompt}
+          onInstallPWA={handleInstallPWA}
         />
       </Suspense>
     );

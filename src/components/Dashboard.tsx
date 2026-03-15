@@ -5,7 +5,7 @@ import type { SmartSchema } from '../lib/db';
 import { updateSearchIndex, miniSearch } from '../lib/search';
 import { triggerAutoSync } from '../lib/sync';
 import { getStorageMode, writeNoteToVault, notePathFromTitle } from '../lib/vault';
-import { FileText, Plus, ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { FileText, Plus, ArrowDown, ArrowUp, ArrowUpDown, LayoutList, LayoutGrid, CalendarDays } from 'lucide-react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -14,6 +14,10 @@ import {
   createColumnHelper,
 } from '@tanstack/react-table';
 import type { SortingState } from '@tanstack/react-table';
+import { DayPicker } from 'react-day-picker';
+import 'react-day-picker/style.css';
+
+type ViewMode = 'table' | 'gallery' | 'calendar';
 
 interface DashboardProps {
     folderName: string;
@@ -129,6 +133,200 @@ const HP = '11px 18px'; // header padding
 const CP = '10px 18px'; // cell padding
 const BD = '1px solid rgba(128,128,128,0.12)';
 
+// ─── Calendar View ─────────────────────────────────────────────────────────────
+function CalendarView({
+    notes,
+    schema,
+    onSelectNote,
+}: {
+    notes: RowData[];
+    schema: SmartSchema;
+    onSelectNote: (id: number) => void;
+}) {
+    const [selectedDay, setSelectedDay] = useState<Date | undefined>(undefined);
+
+    // Find first date field in schema
+    const dateField = schema.fields.find(f => f.type === 'date');
+
+    if (!dateField) {
+        return (
+            <div style={{ padding: '40px 20px', textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', marginBottom: '10px' }}>📅</div>
+                <div className="text-sm text-dark-bg/50 dark:text-light-bg/50 font-medium">
+                    Add a <strong>Date</strong> field to this Smart Folder to use Calendar view.
+                </div>
+            </div>
+        );
+    }
+
+    // Build map: ISO date string → notes
+    const notesByDate = useMemo(() => {
+        const map = new Map<string, RowData[]>();
+        notes.forEach(row => {
+            const val = row.meta[dateField.name];
+            if (val) {
+                const existing = map.get(val) || [];
+                map.set(val, [...existing, row]);
+            }
+        });
+        return map;
+    }, [notes, dateField.name]);
+
+    // Days that have notes — for DayPicker modifiers
+    const daysWithNotes = useMemo(() => {
+        return Array.from(notesByDate.keys()).map(ds => {
+            const [y, m, d] = ds.split('-').map(Number);
+            return new Date(y, m - 1, d);
+        });
+    }, [notesByDate]);
+
+    const selectedDayStr = selectedDay
+        ? `${selectedDay.getFullYear()}-${String(selectedDay.getMonth() + 1).padStart(2, '0')}-${String(selectedDay.getDate()).padStart(2, '0')}`
+        : null;
+    const selectedNotes = selectedDayStr ? (notesByDate.get(selectedDayStr) || []) : [];
+
+    return (
+        <div className="flex flex-col sm:flex-row gap-0 sm:gap-0 min-h-0">
+            {/* Calendar picker */}
+            <div className="flex justify-center px-2 py-3 border-b sm:border-b-0 sm:border-r border-black/5 dark:border-white/5">
+                <DayPicker
+                    mode="single"
+                    selected={selectedDay}
+                    onSelect={setSelectedDay}
+                    modifiers={{ hasNotes: daysWithNotes }}
+                    modifiersClassNames={{ hasNotes: 'rdp-has-notes' }}
+                    showOutsideDays
+                    captionLayout="dropdown"
+                />
+            </div>
+
+            {/* Day detail panel */}
+            <div className="flex-1 p-4 min-w-0">
+                {selectedDay ? (
+                    selectedNotes.length > 0 ? (
+                        <div>
+                            <div className="text-xs font-semibold uppercase tracking-widest text-dark-bg/40 dark:text-light-bg/40 mb-3">
+                                {selectedDay.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+                                <span className="ml-2 text-dark-bg/25 dark:text-light-bg/25">{selectedNotes.length} note{selectedNotes.length !== 1 ? 's' : ''}</span>
+                            </div>
+                            <div className="space-y-2">
+                                {selectedNotes.map(row => (
+                                    <button
+                                        key={row.item.id}
+                                        onClick={() => onSelectNote(row.item.id!)}
+                                        className="w-full text-left px-3 py-2.5 rounded-lg border border-black/8 dark:border-white/8 hover:border-black/15 dark:hover:border-white/15 bg-light-bg/60 dark:bg-dark-bg/60 hover:bg-light-bg dark:hover:bg-dark-bg transition-all group/note"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            {row.item.icon && <span>{row.item.icon}</span>}
+                                            <span className="text-sm font-medium text-dark-bg dark:text-light-bg group-hover/note:text-black dark:group-hover/note:text-white transition-colors">
+                                                {row.item.title || 'Untitled'}
+                                            </span>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="h-full flex items-center justify-center text-sm text-dark-bg/35 dark:text-light-bg/35">
+                            No notes for this day.
+                        </div>
+                    )
+                ) : (
+                    <div className="h-full flex flex-col items-center justify-center gap-2 text-center">
+                        <CalendarDays size={28} className="text-dark-bg/20 dark:text-light-bg/20" />
+                        <div className="text-sm text-dark-bg/35 dark:text-light-bg/35">
+                            Select a day to see notes
+                        </div>
+                        {daysWithNotes.length > 0 && (
+                            <div className="text-xs text-dark-bg/25 dark:text-light-bg/25">
+                                {daysWithNotes.length} day{daysWithNotes.length !== 1 ? 's' : ''} with notes
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ─── Gallery Card ─────────────────────────────────────────────────────────────
+function GalleryView({
+    notes,
+    schema,
+    onSelectNote,
+}: {
+    notes: RowData[];
+    schema: SmartSchema;
+    onSelectNote: (id: number) => void;
+}) {
+    if (notes.length === 0) {
+        return (
+            <div style={{ padding: '40px 20px', textAlign: 'center', opacity: 0.35, fontSize: '0.85rem' }}>
+                No notes in this folder yet.
+            </div>
+        );
+    }
+
+    return (
+        <div
+            style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                gap: '14px',
+                padding: '16px',
+            }}
+        >
+            {notes.map(row => (
+                <button
+                    key={row.item.id}
+                    onClick={() => onSelectNote(row.item.id!)}
+                    className="group/card text-left rounded-xl border border-black/8 dark:border-white/8 bg-light-bg/80 dark:bg-dark-bg/70 backdrop-blur-md hover:border-black/15 dark:hover:border-white/15 hover:-translate-y-0.5 hover:shadow-lg dark:hover:shadow-black/30 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/20 dark:focus:ring-white/20"
+                    style={{ padding: '14px 16px' }}
+                >
+                    {/* Icon + Title */}
+                    <div className="flex items-start gap-2 mb-3">
+                        {row.item.icon && (
+                            <span style={{ fontSize: '1.5rem', lineHeight: 1, flexShrink: 0 }}>{row.item.icon}</span>
+                        )}
+                        <span
+                            className="text-sm font-semibold text-dark-bg dark:text-light-bg leading-tight group-hover/card:opacity-80 transition-opacity"
+                            style={{ overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
+                        >
+                            {row.item.title || 'Untitled'}
+                        </span>
+                    </div>
+
+                    {/* Meta Fields */}
+                    {schema.fields.length > 0 && (
+                        <div className="space-y-1">
+                            {schema.fields.map(f => {
+                                const val = row.meta[f.name] || '';
+                                if (!val) return null;
+                                return (
+                                    <div key={f.name} className="flex items-baseline gap-1.5 min-w-0">
+                                        <span
+                                            className="text-[10px] font-semibold uppercase tracking-widest text-dark-bg/35 dark:text-light-bg/35 shrink-0"
+                                            style={{ minWidth: 0 }}
+                                        >
+                                            {f.name}
+                                        </span>
+                                        <span
+                                            className="text-[11px] text-dark-bg/60 dark:text-light-bg/55 truncate"
+                                        >
+                                            {f.type === 'checkbox' ? (val === 'true' ? '✓' : '✗') : val}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </button>
+            ))}
+        </div>
+    );
+}
+
+// ─── Main Dashboard ────────────────────────────────────────────────────────────
 export default function Dashboard({ folderName, onSelectNote }: DashboardProps) {
     const [targetFolder, setTargetFolder] = useState<NoteItem | null>(null);
     const [schema, setSchema]             = useState<SmartSchema | null>(null);
@@ -136,6 +334,15 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
     const [isLoading, setIsLoading]       = useState(true);
     const [hoveredRow, setHoveredRow]     = useState<number | null>(null);
     const [sorting, setSorting]           = useState<SortingState>([]);
+    const viewKey = `keim_view_${folderName}`;
+    const [viewMode, setViewMode]         = useState<ViewMode>(() => {
+        return (localStorage.getItem(viewKey) as ViewMode | null) ?? 'table';
+    });
+
+    const switchView = (mode: ViewMode) => {
+        setViewMode(mode);
+        localStorage.setItem(viewKey, mode);
+    };
 
     const loadData = useCallback(async () => {
         const folders = await db.items.where({ type: 'folder', title: folderName }).toArray();
@@ -357,6 +564,41 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
 
     return (
         <div className="rounded-lg overflow-hidden bg-light-ui/40 dark:bg-dark-ui/40 backdrop-blur-md border border-black/5 dark:border-white/5 ring-1 ring-black/5 dark:ring-white/10 flex flex-col">
+
+            {/* ── View Switcher Toolbar ── */}
+            <div className="flex items-center justify-end gap-1 px-3 py-2 border-b border-black/5 dark:border-white/5 bg-dark-bg/[0.02] dark:bg-white/[0.02]">
+                {(['table', 'gallery', 'calendar'] as const).map(mode => {
+                    const Icon = mode === 'table' ? LayoutList : mode === 'gallery' ? LayoutGrid : CalendarDays;
+                    const label = mode === 'table' ? 'Table' : mode === 'gallery' ? 'Gallery' : 'Calendar';
+                    return (
+                        <button
+                            key={mode}
+                            onClick={() => switchView(mode)}
+                            title={label}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                                viewMode === mode
+                                    ? 'bg-dark-bg/10 dark:bg-white/10 text-dark-bg dark:text-light-bg'
+                                    : 'text-dark-bg/40 dark:text-light-bg/40 hover:text-dark-bg/70 dark:hover:text-light-bg/70 hover:bg-dark-bg/5 dark:hover:bg-white/5'
+                            }`}
+                        >
+                            <Icon size={13} />
+                            {label}
+                        </button>
+                    );
+                })}
+            </div>
+            {/* ── Gallery View ── */}
+            {viewMode === 'gallery' && (
+                <GalleryView notes={notes} schema={schema!} onSelectNote={onSelectNote} />
+            )}
+
+            {/* ── Calendar View ── */}
+            {viewMode === 'calendar' && (
+                <CalendarView notes={notes} schema={schema!} onSelectNote={onSelectNote} />
+            )}
+
+            {/* ── Table View ── */}
+            {viewMode === 'table' && (
             <div style={{ overflowX: 'auto', width: '100%' }} className="scrollbar-thin scrollbar-thumb-light-border dark:scrollbar-thumb-dark-border">
                 <table style={{
                     borderCollapse: 'collapse', fontSize: '0.84rem',
@@ -466,6 +708,7 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
                     </tbody>
                 </table>
             </div>
+            )}
 
             {/* Premium Table Footer Actions */}
             <div className="border-t border-black/5 dark:border-white/5 bg-light-ui/50 dark:bg-dark-ui/50 !px-4 !py-3 flex items-center justify-between">
