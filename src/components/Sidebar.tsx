@@ -50,8 +50,29 @@ export default function Sidebar({ onOpenSettings, onAddNote, onAddFolder, onUnlo
         return Array.from(tags).sort();
     }, [items]);
 
+    // Clear selected tag if it no longer exists
+    useEffect(() => {
+        if (items && selectedTag && !uniqueTags.includes(selectedTag)) {
+            setSelectedTag(null);
+        }
+    }, [selectedTag, uniqueTags, items]);
+
     const tree = useMemo(() => {
         if (!items) return [];
+
+        if (selectedTag) {
+            // When a tag is selected, show a flat list of matching notes only (no folders)
+            return items
+                .filter(item => item.type === 'note' && item.tags?.includes(selectedTag))
+                .map(item => ({ ...item, children: [] }))
+                .sort((a, b) => {
+                    const orderA = a.order ?? a.updated_at ?? 0;
+                    const orderB = b.order ?? b.updated_at ?? 0;
+                    return orderA - orderB;
+                });
+        }
+
+        // Standard folder tree logic
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const itemMap = new Map<number, any>();
         items.forEach(item => itemMap.set(item.id!, { ...item, children: [] }));
@@ -70,27 +91,6 @@ export default function Sidebar({ onOpenSettings, onAddNote, onAddFolder, onUnlo
                 }
             }
         });
-
-        if (selectedTag) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const filterTree = (nodes: any[]): any[] => {
-                return nodes.map(n => {
-                    if (n.type === 'note') {
-                        if (n.tags && n.tags.includes(selectedTag)) return n;
-                        return null;
-                    }
-                    if (n.type === 'folder' && n.children) {
-                        const filteredChildren = filterTree(n.children);
-                        if (filteredChildren.length > 0) {
-                            return { ...n, children: filteredChildren };
-                        }
-                    }
-                    return null;
-                }).filter(Boolean);
-            };
-            const filteredRoots = filterTree(roots);
-            roots.splice(0, roots.length, ...filteredRoots);
-        }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sortTree = (nodes: any[]) => {
@@ -209,7 +209,7 @@ export default function Sidebar({ onOpenSettings, onAddNote, onAddFolder, onUnlo
                                                             animate={{ opacity: 1, x: 0 }}
                                                             transition={{ duration: 0.15, delay: i * 0.03 }}
                                                             onClick={() => setSelectedTag(isSelected ? null : tag)}
-                                                            className={`relative mx-2 px-3 py-1.5 cursor-pointer text-sm flex items-center justify-between group rounded-md transition-colors ${isSelected ? 'text-dark-bg font-semibold' : 'text-dark-bg/60 hover:bg-dark-bg/5'}`}
+                                                            className={`relative mx-2 px-3 py-1.5 cursor-pointer text-sm flex items-center justify-between group rounded-md transition-colors ${isSelected ? 'text-dark-bg dark:text-light-bg font-semibold' : 'text-dark-bg/60 dark:text-light-bg/60 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5'}`}
                                                             title={`${tagCount} notes`}
                                                         >
                                                             {isSelected && (
@@ -276,11 +276,11 @@ function SyncStatusBadge({ status, lastSyncTime, onSync }: { status: SyncStatus,
     let content;
     let colorClass;
 
-    if (status === 'disconnected') { colorClass = 'text-dark-bg/30'; content = <CloudOff size={16} strokeWidth={1.5} />; }
-    else if (status === 'error') { colorClass = 'text-amber-500'; content = <><AlertCircle size={16} strokeWidth={1.5} /><span className="text-[10px] font-medium tracking-wide leading-none">Error</span></>; }
-    else if (status === 'syncing') { colorClass = 'text-[#F44E2C]'; content = <div className="flex items-center justify-center px-1 h-6"><l-mirage size="32" speed="2.5" color="currentColor" /></div>; }
-    else if (status === 'synced' && showSuccess) { colorClass = 'text-emerald-500'; content = <Check size={18} strokeWidth={2.5} className="mx-0.5" />; }
-    else { colorClass = 'text-dark-bg/60'; content = <>{status === 'synced' ? <Check size={18} strokeWidth={2.5} className="opacity-70" /> : <Cloud size={16} strokeWidth={1.5} className="opacity-70" />}{timeString && <span className="text-[10px] font-medium opacity-80">{timeString}</span>}</>; }
+    if (status === 'disconnected') { colorClass = 'text-dark-bg/30 dark:text-light-bg/30'; content = <CloudOff size={16} strokeWidth={1.5} />; }
+    else if (status === 'error') { colorClass = 'text-dark-bg dark:text-light-bg'; content = <><AlertCircle size={16} strokeWidth={1.5} /><span className="text-[10px] font-medium tracking-wide leading-none">Error</span></>; }
+    else if (status === 'syncing') { colorClass = 'text-dark-bg dark:text-light-bg'; content = <div className="flex items-center justify-center px-1 h-6"><l-mirage size="32" speed="2.5" color="currentColor" /></div>; }
+    else if (status === 'synced' && showSuccess) { colorClass = 'text-dark-bg dark:text-light-bg'; content = <Check size={18} strokeWidth={2.5} className="mx-0.5" />; }
+    else { colorClass = 'text-dark-bg/60 dark:text-light-bg/60'; content = <>{status === 'synced' ? <Check size={18} strokeWidth={2.5} className="opacity-70" /> : <Cloud size={16} strokeWidth={1.5} className="opacity-70" />}{timeString && <span className="text-[10px] font-medium opacity-80">{timeString}</span>}</>; }
 
     return (
         <button onClick={(e) => { e.stopPropagation(); if (status !== 'syncing') onSync?.(); }} disabled={status === 'syncing'} className={`flex items-center h-[28px] md:h-[26px] px-2 gap-1.5 rounded-lg hover:bg-dark-bg/10 shrink-0 ${colorClass}`}>

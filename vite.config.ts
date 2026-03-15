@@ -34,14 +34,10 @@ export default defineConfig({
         orientation: 'portrait-primary',
         icons: [
           {
-            src: 'keim_logo.png',
-            sizes: '192x192',
-            type: 'image/png'
-          },
-          {
-            src: 'keim_logo.png',
-            sizes: '512x512',
-            type: 'image/png'
+            src: 'keim_logo.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'any maskable'
           }
         ]
       }

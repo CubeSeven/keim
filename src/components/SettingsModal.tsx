@@ -221,19 +221,19 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                             <div className="flex items-center justify-between">
                                                 <label className="text-sm font-bold opacity-50 uppercase tracking-widest">Storage Mode</label>
                                                 {!isFileSystemSupported() && (
-                                                    <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter">Limited Mode</span>
+                                                    <span className="text-[10px] bg-dark-bg/10 dark:bg-light-bg/10 text-dark-bg dark:text-light-bg font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter">Limited Mode</span>
                                                 )}
                                             </div>
 
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 {/* Local Disk Card */}
-                                                <div className={`relative p-5 rounded-2xl border-2 transition-all flex flex-col gap-4 ${storageMode === 'vault' ? 'border-indigo-500 bg-indigo-500/5 shadow-md shadow-indigo-500/10' : 'border-light-ui dark:border-dark-ui bg-light-ui/20 dark:bg-dark-ui/20 opacity-80'}`}>
+                                                <div className={`relative p-5 rounded-2xl border-2 transition-all flex flex-col gap-4 ${storageMode === 'vault' ? 'border-dark-bg/20 dark:border-light-bg/20 bg-dark-bg/5 dark:bg-light-bg/5 shadow-md shadow-dark-bg/10 dark:shadow-light-bg/10' : 'border-light-ui dark:border-dark-ui bg-light-ui/20 dark:bg-dark-ui/20 opacity-80'}`}>
                                                     <div className="flex items-center justify-between">
-                                                        <div className={`p-2.5 rounded-xl ${storageMode === 'vault' ? 'bg-indigo-500 text-white' : 'bg-dark-bg/5 dark:bg-light-bg/5 text-dark-bg dark:text-light-bg'}`}>
+                                                        <div className={`p-2.5 rounded-xl ${storageMode === 'vault' ? 'bg-dark-bg dark:bg-light-bg text-light-bg dark:text-dark-bg' : 'bg-dark-bg/5 dark:bg-light-bg/5 text-dark-bg dark:text-light-bg'}`}>
                                                             <HardDrive size={22} />
                                                         </div>
                                                         {storageMode === 'vault' && (
-                                                            <div className="flex items-center gap-1.5 text-indigo-500 font-bold text-[10px] uppercase tracking-wider bg-white dark:bg-indigo-500/20 px-2 py-1 rounded-full border border-indigo-500/20">
+                                                            <div className="flex items-center gap-1.5 text-dark-bg dark:text-light-bg font-bold text-[10px] uppercase tracking-wider bg-dark-bg/5 dark:bg-light-bg/10 px-2 py-1 rounded-full border border-dark-bg/20 dark:border-light-bg/20">
                                                                 <CheckCircle2 size={12} /> Active
                                                             </div>
                                                         )}
@@ -258,7 +258,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                                     setPickingVault(false);
                                                                 }
                                                             }}
-                                                            className="w-full py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-bold transition-all shadow-lg shadow-indigo-500/20"
+                                                            className="w-full py-2.5 rounded-xl bg-dark-bg dark:bg-light-bg text-light-bg dark:text-dark-bg text-sm font-bold transition-all shadow-lg hover:opacity-90"
                                                         >
                                                             {pickingVault ? 'Choosing folder...' : 'Select Folder'}
                                                         </button>
@@ -266,13 +266,13 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                 </div>
 
                                                 {/* Browser Storage Card */}
-                                                <div className={`relative p-5 rounded-2xl border-2 transition-all flex flex-col gap-4 ${storageMode === 'indexeddb' ? 'border-indigo-500 bg-indigo-500/5 shadow-md shadow-indigo-500/10' : 'border-light-ui dark:border-dark-ui bg-light-ui/20 dark:bg-dark-ui/20 opacity-80'}`}>
+                                                <div className={`relative p-5 rounded-2xl border-2 transition-all flex flex-col gap-4 ${storageMode === 'indexeddb' ? 'border-dark-bg/20 dark:border-light-bg/20 bg-dark-bg/5 dark:bg-light-bg/5 shadow-md shadow-dark-bg/10 dark:shadow-light-bg/10' : 'border-light-ui dark:border-dark-ui bg-light-ui/20 dark:bg-dark-ui/20 opacity-80'}`}>
                                                     <div className="flex items-center justify-between">
-                                                        <div className={`p-2.5 rounded-xl ${storageMode === 'indexeddb' ? 'bg-indigo-500 text-white' : 'bg-dark-bg/5 dark:bg-light-bg/5 text-dark-bg dark:text-light-bg'}`}>
+                                                        <div className={`p-2.5 rounded-xl ${storageMode === 'indexeddb' ? 'bg-dark-bg dark:bg-light-bg text-light-bg dark:text-dark-bg' : 'bg-dark-bg/5 dark:bg-light-bg/5 text-dark-bg dark:text-light-bg'}`}>
                                                             <Database size={22} />
                                                         </div>
                                                         {storageMode === 'indexeddb' && (
-                                                            <div className="flex items-center gap-1.5 text-indigo-500 font-bold text-[10px] uppercase tracking-wider bg-white dark:bg-indigo-500/20 px-2 py-1 rounded-full border border-indigo-500/20">
+                                                            <div className="flex items-center gap-1.5 text-dark-bg dark:text-light-bg font-bold text-[10px] uppercase tracking-wider bg-dark-bg/5 dark:bg-light-bg/10 px-2 py-1 rounded-full border border-dark-bg/20 dark:border-light-bg/20">
                                                                 <CheckCircle2 size={12} /> Active
                                                             </div>
                                                         )}
@@ -301,8 +301,8 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
 
                                             {/* Availability Warning Box if not supported */}
                                             {!isFileSystemSupported() && (
-                                                <div className="flex items-start gap-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
-                                                    <AlertCircle size={20} className="shrink-0 mt-0.5" />
+                                                <div className="flex items-start gap-4 p-4 rounded-xl bg-dark-bg/5 dark:bg-light-bg/5 border border-dark-bg/10 dark:border-light-bg/10 text-dark-bg dark:text-light-bg">
+                                                    <AlertCircle size={20} className="shrink-0 mt-0.5 opacity-70" />
                                                     <div className="space-y-1">
                                                         <p className="text-xs font-bold uppercase tracking-wide">Why is Local Disk unavailable?</p>
                                                         <p className="text-xs opacity-90 leading-relaxed">
@@ -396,7 +396,7 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                             onInstallPWA();
                                                             onClose();
                                                         }}
-                                                        className="col-span-2 flex items-center justify-between p-4 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-500/20 group mt-2"
+                                                        className="col-span-2 flex items-center justify-between p-4 rounded-lg bg-dark-bg dark:bg-light-bg text-light-bg dark:text-dark-bg hover:opacity-90 transition-all shadow-lg group mt-2"
                                                     >
                                                         <div className="flex items-center gap-3">
                                                             <Monitor size={20} className="group-hover:bounce" />

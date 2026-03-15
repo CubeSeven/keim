@@ -33,8 +33,8 @@ Expand the Smart Folder dashboards with dynamic views powered by YAML frontmatte
 
 ---
 
-## 🚀 Performance & Optimizations
-*   **Lazy Loading & Bundle Splitting:** Defer loading heavy components like `Editor`, `SettingsModal`, or `CommandPalette` to improve initial load time.
-*   **Premium Micro-Animations:** Introduce `framer-motion` for smooth UI transitions (sidebar, modals, list reordering).
-*   **Search Engine Optimization:** Replace basic search with `FlexSearch` or `MiniSearch` for typo-tolerant, instantaneous full-text search.
-*   **Offline Sync Queue:** Track offline mutations and automatically push them to the Vault/Dropbox upon network restore.
+## 🔌 Openness & Extensibility
+*   **File-Based API Documentation:** Formally define the YAML schema and folder structure to enable external integrations (Python, Raycast).
+*   **CM6 Extension Bridge:** Allow power users to inject custom CodeMirror 6 extensions (VIM mode, custom linters, specialized widgets).
+*   **Sandboxed Plugin System:** Implement a secure, PWA-safe plugin loader for UI and logic extensions (e.g., custom property renderers or dashboard views).
+*   **Vault-Local Plugins:** Support loading plugins directly from a `.keim/plugins` folder within the user's vault for 100% portability.

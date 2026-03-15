@@ -16,7 +16,7 @@ export default function WelcomeScreen({ onPickVault, onUseBrowserStorage, isPick
                 {/* Logo / Brand */}
                 <div className="flex flex-col items-center gap-3">
                     <img 
-                        src="keim_logo.png" 
+                        src="keim_logo.svg" 
                         alt="Keim Logo" 
                         className="w-20 h-20 rounded-2xl shadow-lg animate-in fade-in zoom-in duration-700"
                     />

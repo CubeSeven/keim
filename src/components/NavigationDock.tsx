@@ -1,3 +1,4 @@
+import React from 'react';
 import { Plus, Folder, Search, Cloud, Check, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { mirage } from 'ldrs';
@@ -10,6 +11,7 @@ interface NavigationDockProps {
     isSidebarOpen: boolean;
     syncStatus?: SyncStatus;
     onSync?: () => void;
+    showSlashButton?: boolean;
 }
 
 function DockSyncIndicator({ status, onSync }: { status: SyncStatus; onSync?: () => void }) {
@@ -34,33 +36,53 @@ function DockSyncIndicator({ status, onSync }: { status: SyncStatus; onSync?: ()
             >
                 {status === 'syncing' && (
                     <span className="flex items-center justify-center h-5">
-                        <l-mirage size="32" speed="2.5" color="#F44E2C" />
+                        <l-mirage size="32" speed="2.5" color="currentColor" />
                     </span>
                 )}
                 {status === 'synced' && (
-                    <Check size={18} strokeWidth={2.5} className="text-emerald-500" />
+                    <Check size={18} strokeWidth={2.5} className="text-dark-bg dark:text-light-bg" />
                 )}
                 {status === 'error' && (
-                    <AlertCircle size={18} strokeWidth={1.5} className="text-amber-500" />
+                    <AlertCircle size={18} strokeWidth={1.5} className="text-dark-bg dark:text-light-bg" />
                 )}
                 {/* Show cloud icon as base under syncing/error for context */}
                 {(status === 'error') && (
-                    <Cloud size={10} strokeWidth={1.5} className="text-amber-400 -mt-0.5 opacity-60" />
+                    <Cloud size={10} strokeWidth={1.5} className="text-dark-bg/60 dark:text-light-bg/60 -mt-0.5 opacity-60" />
                 )}
             </motion.button>
         </AnimatePresence>
     );
 }
 
-export default function NavigationDock({ onAddNote, onAddFolder, isSidebarOpen, syncStatus = 'disconnected', onSync }: NavigationDockProps) {
+export default function NavigationDock({ onAddNote, onAddFolder, isSidebarOpen, syncStatus = 'disconnected', onSync, showSlashButton }: NavigationDockProps) {
+    const [isSlashEligible, setIsSlashEligible] = React.useState(false);
+
+    React.useEffect(() => {
+        const handleEligibility = (e: Event) => setIsSlashEligible((e as CustomEvent).detail);
+        window.addEventListener('keim_slash_eligibility_changed', handleEligibility);
+        
+        // Reset state when hiding slash button globally (like switching notes)
+        if (!showSlashButton) {
+            setIsSlashEligible(false);
+        }
+
+        return () => window.removeEventListener('keim_slash_eligibility_changed', handleEligibility);
+    }, [showSlashButton]);
+
     const handleSearch = () => {
         document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyK', altKey: true }));
+    };
+
+    const handleSlash = () => {
+        window.dispatchEvent(new CustomEvent('keim_trigger_slash_menu'));
     };
 
     const btnClass =
         'flex flex-col items-center justify-center p-3 text-dark-bg/60 dark:text-light-bg/60 hover:text-dark-bg dark:hover:text-light-bg transition-colors';
 
     const showSync = syncStatus !== 'disconnected' && syncStatus !== 'idle';
+    // DEBUG LOG
+    console.log('[NavigationDock] Rendering with showSlashButton:', showSlashButton);
 
     return (
         <AnimatePresence mode="wait" initial={false}>
@@ -86,6 +108,27 @@ export default function NavigationDock({ onAddNote, onAddFolder, isSidebarOpen, 
             >
                 <Search size={20} strokeWidth={1.5} />
             </motion.button>
+
+            <AnimatePresence>
+            {showSlashButton && isSlashEligible && (
+                <motion.div
+                    initial={{ width: 0, opacity: 0, overflow: 'hidden' }}
+                    animate={{ width: 'auto', opacity: 1 }}
+                    exit={{ width: 0, opacity: 0, overflow: 'hidden' }}
+                    transition={{ duration: 0.2, ease: 'easeInOut' }}
+                    className="flex items-center justify-center shrink-0"
+                >
+                    <motion.button
+                        whileTap={{ scale: 0.88 }}
+                        onClick={handleSlash}
+                        className={btnClass}
+                        title="Insert command (/)"
+                    >
+                        <div className="w-5 h-5 flex items-center justify-center font-mono font-bold text-lg opacity-80 leading-none pb-0.5">/</div>
+                    </motion.button>
+                </motion.div>
+            )}
+            </AnimatePresence>
 
             <div className={`
                 bg-dark-bg/10 dark:bg-light-bg/10 mx-1 opacity-50

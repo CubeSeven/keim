@@ -1,4 +1,5 @@
 import { useEffect, useCallback, Suspense, lazy } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import Sidebar from './components/Sidebar';
 import { db, addItem } from './lib/db';
 import { PanelLeft, HardDrive, FileText } from 'lucide-react';
@@ -58,7 +59,8 @@ function App() {
       syncStatus, setSyncStatus,
       lastSyncTime,
       isVaultLocked,
-      smartPopupState, setSmartPopupState
+      smartPopupState, setSmartPopupState,
+      selectedFolderId,
   } = useAppStore();
 
   const {
@@ -70,6 +72,17 @@ function App() {
   } = useAppInit();
 
   const storageMode = getStorageMode();
+
+  // --- Ghost note prevention ---
+  // If the selected note is deleted (or its entire parent folder is removed),
+  // this live query will return undefined/isDeleted and we clear the selection.
+  useLiveQuery(async () => {
+    if (selectedNoteId === null) return;
+    const item = await db.items.get(selectedNoteId);
+    if (!item || item.isDeleted) {
+      setSelectedNoteId(null);
+    }
+  }, [selectedNoteId]);
 
   // --- Theme Application ---
   useEffect(() => {
@@ -113,10 +126,17 @@ function App() {
   };
 
   const handleAddNote = useCallback(async (explicitParentId?: number) => {
-    let parentId = explicitParentId ?? 0;
-    if (explicitParentId === undefined && selectedNoteId) {
+    let parentId: number;
+    if (explicitParentId !== undefined) {
+      parentId = explicitParentId;
+    } else if (selectedFolderId !== null) {
+      // Use the folder currently active/open in the sidebar
+      parentId = selectedFolderId;
+    } else if (selectedNoteId) {
       const currentNote = await db.items.get(selectedNoteId);
-      if (currentNote) parentId = currentNote.parentId;
+      parentId = currentNote?.parentId ?? 0;
+    } else {
+      parentId = 0;
     }
 
     const id = await addItem({ parentId, type: 'note', title: 'New Note' }, '');
@@ -142,13 +162,19 @@ function App() {
     setTimeout(tryFocus, 50);
     setTimeout(tryFocus, 150);
     setTimeout(tryFocus, 300);
-  }, [selectedNoteId, setSelectedNoteId, setSidebarOpen]);
+  }, [selectedFolderId, selectedNoteId, setSelectedNoteId, setSidebarOpen]);
 
   const handleAddFolder = useCallback(async (explicitParentId?: number) => {
-    let parentId = explicitParentId ?? 0;
-    if (explicitParentId === undefined && selectedNoteId) {
+    let parentId: number;
+    if (explicitParentId !== undefined) {
+      parentId = explicitParentId;
+    } else if (selectedFolderId !== null) {
+      parentId = selectedFolderId;
+    } else if (selectedNoteId) {
       const currentNote = await db.items.get(selectedNoteId);
-      if (currentNote) parentId = currentNote.parentId;
+      parentId = currentNote?.parentId ?? 0;
+    } else {
+      parentId = 0;
     }
 
     const id = await addItem({ parentId, type: 'folder', title: 'New Folder' }, '');
@@ -173,7 +199,7 @@ function App() {
     setTimeout(tryRename, 50);
     setTimeout(tryRename, 150);
     setTimeout(tryRename, 300);
-  }, [selectedNoteId, setSidebarOpen]);
+  }, [selectedFolderId, selectedNoteId, setSidebarOpen]);
 
   useKeyboardShortcuts({ handleAddNote, handleAddFolder, doSync, selectedNoteId });
 
@@ -370,11 +396,12 @@ function App() {
         {/* Render Navigation Dock inside workspace for perfect centering */}
         {appState === 'ready' && (
           <NavigationDock
-            onAddNote={() => handleAddNote(0)}
-            onAddFolder={() => handleAddFolder(0)}
+            onAddNote={() => handleAddNote()}
+            onAddFolder={() => handleAddFolder()}
             isSidebarOpen={isSidebarOpen}
             syncStatus={syncStatus}
             onSync={doSync}
+            showSlashButton={!!selectedNoteId}
           />
         )}
       </main>

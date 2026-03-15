@@ -6,7 +6,7 @@ import { NoteService } from '../lib/NoteService';
 import { useAppStore } from '../store';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Folder, FolderOpen, FileText, Plus, Trash2, X, Check,
+    Folder, FolderOpen, FileText, Plus, Trash2,
     Database, Edit2, MoreVertical
 } from 'lucide-react';
 
@@ -19,9 +19,9 @@ interface SidebarNodeProps {
 }
 
 export default function SidebarNode({ item, level, onAddNote, onAddFolder, onDeleteItem }: SidebarNodeProps) {
-    const { selectedNoteId, setSelectedNoteId, setSidebarOpen } = useAppStore();
+    const { selectedNoteId, setSelectedNoteId, setSidebarOpen, setSelectedFolderId } = useAppStore();
     const [isOpen, setIsOpen] = useState(false);
-    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number } | null>(null);
 
     const isSmartFolder = useLiveQuery(
@@ -55,8 +55,7 @@ export default function SidebarNode({ item, level, onAddNote, onAddFolder, onDel
     const [renameValue, setRenameValue] = useState(item.title);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    useEffect(() => setIsConfirmingDelete(false), [selectedNoteId, isOpen]);
+
 
     useEffect(() => {
         const handleRename = (e: CustomEvent) => {
@@ -66,21 +65,12 @@ export default function SidebarNode({ item, level, onAddNote, onAddFolder, onDel
         return () => window.removeEventListener('keim_rename_node', handleRename as EventListener);
     }, [item.id]);
 
-    const handleConfirmDelete = useCallback(async () => {
-        setIsConfirmingDelete(false);
+    const handleDelete = useCallback(async () => {
         await NoteService.removeItem(item);
         onDeleteItem?.(item.id!);
     }, [item, onDeleteItem]);
 
-    useEffect(() => {
-        if (!isConfirmingDelete) return;
-        const handleConfirmKeys = (e: KeyboardEvent) => {
-            if (e.key === 'Enter') { e.preventDefault(); handleConfirmDelete(); } 
-            else if (e.key === 'Escape') { e.preventDefault(); setIsConfirmingDelete(false); }
-        };
-        window.addEventListener('keydown', handleConfirmKeys);
-        return () => window.removeEventListener('keydown', handleConfirmKeys);
-    }, [isConfirmingDelete, handleConfirmDelete]); // Added handleConfirmDelete to dependencies
+
 
     useEffect(() => {
         if (isRenaming && inputRef.current) {
@@ -203,7 +193,7 @@ export default function SidebarNode({ item, level, onAddNote, onAddFolder, onDel
         ? 'bg-white/50 dark:bg-white/10 text-dark-bg dark:text-light-bg font-semibold ring-1 ring-black/5 dark:ring-white/10 shadow-sm'
         : 'text-dark-bg/70 dark:text-light-bg/70 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 hover:text-dark-bg dark:hover:text-light-bg';
 
-    if (dragOverKind === 'inside') selectedClasses += ' bg-indigo-500/10 border-indigo-500 ring-2 ring-indigo-500/20 z-10';
+    if (dragOverKind === 'inside') selectedClasses += ' ring-1 ring-dark-bg/20 dark:ring-light-bg/20 bg-dark-bg/5 dark:bg-light-bg/5 z-10';
     if (isDragging) selectedClasses += ' opacity-40 grayscale';
 
     return (
@@ -214,9 +204,12 @@ export default function SidebarNode({ item, level, onAddNote, onAddFolder, onDel
                 onClick={(e: React.MouseEvent) => { // Added React.MouseEvent type to 'e'
                     if (isRenaming) return;
                     if (contextMenu) { setContextMenu(null); e.stopPropagation(); return; }
-                    if (item.type === 'folder') setIsOpen(!isOpen);
-                    else {
+                    if (item.type === 'folder') {
+                        setIsOpen(!isOpen);
+                        setSelectedFolderId(item.id!);
+                    } else {
                         setSelectedNoteId(item.id!);
+                        setSelectedFolderId(item.parentId);
                         if (window.innerWidth < 768) setSidebarOpen(false);
                     }
                 }}
@@ -233,8 +226,8 @@ export default function SidebarNode({ item, level, onAddNote, onAddFolder, onDel
                 onDrop={handleDrop}
                 onDragEnd={(e) => { e.stopPropagation(); setIsDragging(false); setDragOverKind(null); }}
             >
-                {dragOverKind === 'before' && <div className="absolute -top-[1.5px] right-2 h-[3px] bg-indigo-500 rounded-full z-20 pointer-events-none shadow-[0_0_8px_rgba(99,102,241,0.8)]" style={{ left: paddingLeft }} />}
-                {dragOverKind === 'after' && <div className="absolute -bottom-[1.5px] right-2 h-[3px] bg-indigo-500 rounded-full z-20 pointer-events-none shadow-[0_0_8px_rgba(99,102,241,0.8)]" style={{ left: paddingLeft }} />}
+                {dragOverKind === 'before' && <div className="absolute -top-[1.5px] right-2 h-[3px] bg-dark-bg/40 dark:bg-light-bg/40 rounded-full z-20 pointer-events-none" style={{ left: paddingLeft }} />}
+                {dragOverKind === 'after' && <div className="absolute -bottom-[1.5px] right-2 h-[3px] bg-dark-bg/40 dark:bg-light-bg/40 rounded-full z-20 pointer-events-none" style={{ left: paddingLeft }} />}
 
                 <div className="flex items-center gap-2 truncate flex-1 min-w-0 pointer-events-none">
                     {item.icon ? <span className="text-base leading-none flex-shrink-0">{item.icon}</span> 
@@ -246,9 +239,8 @@ export default function SidebarNode({ item, level, onAddNote, onAddFolder, onDel
                                 animate={{ scale: 1, opacity: 0.8 }}
                                 transition={{ duration: 0.15 }}
                             >
-                                {isOpen ? <FolderOpen size={16} /> : <Folder size={16} />}
+                                {isSmartFolder ? <Database size={16} /> : (isOpen ? <FolderOpen size={16} /> : <Folder size={16} />)}
                             </motion.div>
-                            {isSmartFolder && <Database size={8} className="absolute -bottom-0.5 -right-1 text-indigo-500 drop-shadow-sm" />}
                         </div>
                     ) : <FileText size={16} className="opacity-80 flex-shrink-0" />}
 
@@ -265,12 +257,7 @@ export default function SidebarNode({ item, level, onAddNote, onAddFolder, onDel
                     ) : <span className="truncate text-sm" title={item.title}>{item.title}</span>}
                 </div>
 
-                {!isRenaming && isConfirmingDelete ? (
-                    <div className="flex items-center gap-1 bg-red-500/10 px-1 rounded ml-2 shrink-0 pointer-events-auto">
-                        <button onClick={(e) => { e.stopPropagation(); handleConfirmDelete(); }} className="text-red-600 p-1.5 hover:scale-110"><Check size={14} /></button>
-                        <button onClick={(e) => { e.stopPropagation(); setIsConfirmingDelete(false); }} className="text-dark-bg opacity-70 p-1.5 hover:scale-110"><X size={14} /></button>
-                    </div>
-                ) : !isRenaming && (
+                {!isRenaming && (
                     <button
                         onClick={(e) => {
                             e.preventDefault(); e.stopPropagation();
@@ -347,7 +334,7 @@ export default function SidebarNode({ item, level, onAddNote, onAddFolder, onDel
                                             setContextMenu(null);
                                             useAppStore.getState().setSmartPopupState({ isOpen: true, folderId: item.id, folderTitle: item.title });
                                         }}>
-                                        <Database size={14} className="text-indigo-500" /> Make Smart
+                                        <Database size={14} className="opacity-70" /> Make Smart
                                     </button>
                                 )}
                                 <div className="h-px bg-light-border dark:bg-dark-border my-1" />
@@ -358,7 +345,7 @@ export default function SidebarNode({ item, level, onAddNote, onAddFolder, onDel
                             <Edit2 size={14} className="opacity-70" /> Rename
                         </button>
                         <button className="w-full text-left px-3 py-2 hover:bg-red-500/10 flex items-center gap-2.5 text-red-600" 
-                            onClick={(e) => { e.stopPropagation(); setContextMenu(null); setIsConfirmingDelete(true); }}>
+                            onClick={(e) => { e.stopPropagation(); setContextMenu(null); handleDelete(); }}>
                             <Trash2 size={14} /> Delete
                         </button>
                     </motion.div>

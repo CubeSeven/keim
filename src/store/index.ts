@@ -19,6 +19,10 @@ interface DefaultAppState {
     selectedNotePath: string | null;
     setSelectedNotePath: (path: string | null) => void;
 
+    // The folder that is currently active/open in the sidebar (used for context-aware creation)
+    selectedFolderId: number | null;
+    setSelectedFolderId: (id: number | null) => void;
+
     // -------------------------------------------------------------
     // Sync & Storage State
     // -------------------------------------------------------------
@@ -77,6 +81,9 @@ export const useAppStore = create<DefaultAppState>((set) => ({
         }
         set({ selectedNotePath });
     },
+
+    selectedFolderId: null,
+    setSelectedFolderId: (selectedFolderId) => set({ selectedFolderId }),
 
     syncStatus: 'disconnected',
     setSyncStatus: (syncStatus) => set({ syncStatus }),

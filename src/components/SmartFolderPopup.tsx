@@ -97,8 +97,8 @@ export default function SmartFolderPopup({ folderId, folderTitle, onClose }: Sma
                 {/* ── Header ── */}
                 <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 border-b border-black/6 dark:border-white/8">
                     <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-md bg-indigo-500/15 flex items-center justify-center shrink-0">
-                            <Database size={14} className="text-indigo-500" />
+                        <div className="w-7 h-7 rounded-md bg-dark-bg/8 dark:bg-light-bg/8 flex items-center justify-center shrink-0">
+                            <Database size={14} className="text-dark-bg/70 dark:text-light-bg/70" />
                         </div>
                         <div>
                             <h2 className="text-sm font-bold text-dark-bg dark:text-light-bg leading-tight">
@@ -123,7 +123,7 @@ export default function SmartFolderPopup({ folderId, folderTitle, onClose }: Sma
 
                     {isLoading ? (
                         <div className="flex justify-center py-8">
-                            <l-mirage size="28" speed="2.5" color="rgb(99 102 241)" />
+                            <l-mirage size="28" speed="2.5" color="currentColor" />
                         </div>
                     ) : (
                         <div className="space-y-2">
@@ -141,7 +141,7 @@ export default function SmartFolderPopup({ folderId, folderTitle, onClose }: Sma
                                     className="flex flex-col gap-2 p-3 rounded-lg
                                                border border-black/6 dark:border-white/8
                                                bg-dark-bg/[0.02] dark:bg-white/[0.03]
-                                               hover:border-indigo-500/20 dark:hover:border-indigo-400/20 transition-colors">
+                                               hover:border-black/10 dark:hover:border-white/10 transition-colors">
 
                                     {/* Row 1: name input + type selector + delete */}
                                     <div className="flex items-center gap-2">
@@ -154,7 +154,7 @@ export default function SmartFolderPopup({ folderId, folderTitle, onClose }: Sma
                                                        rounded-md px-3 py-2 text-sm
                                                        text-dark-bg dark:text-light-bg
                                                        border border-black/6 dark:border-white/8
-                                                       focus:ring-1 focus:ring-indigo-500/40 focus:border-indigo-500/30
+                                                       focus:ring-1 focus:ring-dark-bg/15 dark:focus:ring-light-bg/15 focus:border-black/15 dark:focus:border-white/15
                                                        outline-none placeholder-dark-bg/30 dark:placeholder-light-bg/30 transition-all"
                                         />
 
@@ -166,7 +166,7 @@ export default function SmartFolderPopup({ folderId, folderTitle, onClose }: Sma
                                                            rounded-md pl-3 pr-8 py-2 text-sm
                                                            text-dark-bg dark:text-light-bg
                                                            border border-black/6 dark:border-white/8
-                                                           focus:ring-1 focus:ring-indigo-500/40 outline-none cursor-pointer transition-all">
+                                                           focus:ring-1 focus:ring-dark-bg/15 dark:focus:ring-light-bg/15 outline-none cursor-pointer transition-all">
                                                 {FIELD_TYPES.map((t, i) => <option key={`${t.value}-${i}`} value={t.value}>{t.label}</option>)}
                                             </select>
                                             <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-dark-bg/40 dark:text-light-bg/40" />
@@ -184,15 +184,15 @@ export default function SmartFolderPopup({ folderId, folderTitle, onClose }: Sma
 
                                     {/* Select options pill list */}
                                     {field.type === 'select' && (
-                                        <div className="pl-2 border-l-2 border-indigo-500/25 mt-0.5">
+                                        <div className="pl-2 border-l-2 border-dark-bg/10 dark:border-light-bg/10 mt-0.5">
                                             <p className="text-[10px] font-semibold text-dark-bg/40 dark:text-light-bg/35 uppercase tracking-widest mb-2">Options</p>
                                             <div className="flex flex-wrap gap-1.5">
                                                 {(field.options || []).map((opt, oi) => (
                                                     <span key={`${opt}-${oi}`}
                                                         className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs
-                                                                   bg-indigo-500/10 dark:bg-indigo-400/10
-                                                                   text-indigo-700 dark:text-indigo-300
-                                                                   border border-indigo-500/15">
+                                                                   bg-dark-bg/6 dark:bg-light-bg/6
+                                                                   text-dark-bg/70 dark:text-light-bg/70
+                                                                   border border-black/8 dark:border-white/8">
                                                         {opt}
                                                         <button
                                                             onClick={() => {
@@ -200,7 +200,7 @@ export default function SmartFolderPopup({ folderId, folderTitle, onClose }: Sma
                                                                 o.splice(oi, 1);
                                                                 handleUpdateField(idx, { options: o });
                                                             }}
-                                                            className="text-indigo-400 hover:text-red-500 transition-colors ml-0.5 leading-none">
+                                                            className="text-dark-bg/40 dark:text-light-bg/40 hover:text-red-500 transition-colors ml-0.5 leading-none">
                                                             <X size={9} />
                                                         </button>
                                                     </span>
@@ -234,9 +234,9 @@ export default function SmartFolderPopup({ folderId, folderTitle, onClose }: Sma
                                 className="w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-medium
                                            border border-dashed border-black/8 dark:border-white/8
                                            text-dark-bg/50 dark:text-light-bg/40
-                                           hover:bg-indigo-500/[0.06] dark:hover:bg-indigo-400/[0.06]
-                                           hover:border-indigo-500/25 dark:hover:border-indigo-400/20
-                                           hover:text-indigo-600 dark:hover:text-indigo-400
+                                           hover:bg-dark-bg/5 dark:hover:bg-light-bg/5
+                                           hover:border-black/10 dark:hover:border-white/10
+                                           hover:text-dark-bg dark:hover:text-light-bg
                                            active:scale-[0.98] transition-all mt-1">
                                 <Plus size={15} />
                                 Add Property
@@ -268,9 +268,10 @@ export default function SmartFolderPopup({ folderId, folderTitle, onClose }: Sma
                         <button
                             onClick={handleSave}
                             disabled={isSaving}
-                            className="px-4 py-2 text-sm font-semibold text-white rounded-md
-                                       bg-indigo-500 hover:bg-indigo-600 active:scale-95 transition-all
-                                       shadow-md shadow-indigo-500/25 flex items-center gap-2">
+                            className="px-4 py-2 text-sm font-semibold rounded-md
+                                       bg-dark-bg text-light-bg dark:bg-light-bg dark:text-dark-bg
+                                       hover:opacity-80 active:scale-95 transition-all
+                                       flex items-center gap-2">
                             {isSaving && <l-mirage size="16" speed="2.5" color="white" />}
                             Save
                         </button>

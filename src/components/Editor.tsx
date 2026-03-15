@@ -16,10 +16,11 @@ import { mirage } from 'ldrs';
 mirage.register();
 import type { SyncStatus } from '../App';
 import { editorViewOptionsCtx, editorViewCtx, parserCtx } from '@milkdown/kit/core';
+import { Plugin, PluginKey } from '@milkdown/prose/state';
 import { TextSelection } from '@milkdown/prose/state';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
 import { ProsemirrorAdapterProvider, useNodeViewFactory } from '@prosemirror-adapter/react';
-import { $view } from '@milkdown/kit/utils';
+import { $view, $prose } from '@milkdown/kit/utils';
 import { remarkDirectivePlugin, remarkDirectiveFallbackPlugin, dashboardNode } from '../plugins/dashboardNode';
 import { DashboardNodeView } from '../plugins/DashboardNodeView';
 import { DashboardFolderPicker } from './DashboardFolderPicker';
@@ -42,6 +43,20 @@ interface CrepeBodyProps {
     onSave: (markdown: string) => void;
     onSelectNote: (id: number) => void;
 }
+
+// Custom Prosemirror plugin to track when cursor is eligible for the slash menu (start of block)
+const slashCursorTrackerPlugin = $prose(() => new Plugin({
+    key: new PluginKey('SLASH_CURSOR_TRACKER'),
+    view: () => ({
+        update: (view) => {
+            const { selection } = view.state;
+            const isEligible = selection.empty && 
+                               selection.$from.parent.type.name === 'paragraph' && 
+                               selection.$from.parent.textContent.length === 0;
+            window.dispatchEvent(new CustomEvent('keim_slash_eligibility_changed', { detail: isEligible }));
+        }
+    })
+}));
 
 // --- Module-level write-through buffer ---
 // Key: noteId, Value: latest markdown content
@@ -106,6 +121,27 @@ function CrepeBodyInner({ content, noteId, onSave, onSelectNote }: CrepeBodyProp
         window.addEventListener('keim-insert-dashboard', handler);
         return () => window.removeEventListener('keim-insert-dashboard', handler);
     }, []);
+
+    // Listen for slash menu trigger from Navigation Dock
+    useEffect(() => {
+        const handler = () => {
+            if (!loading && get()) {
+                const editor = get();
+                editor.action((ctx) => {
+                    const view = ctx.get(editorViewCtx);
+                    // Focus the editor if it isn't already focused
+                    if (!view.hasFocus()) {
+                        view.focus();
+                    }
+                    // Insert a '/' at the current cursor position
+                    const tr = view.state.tr.insertText('/');
+                    view.dispatch(tr);
+                });
+            }
+        };
+        window.addEventListener('keim_trigger_slash_menu', handler);
+        return () => window.removeEventListener('keim_trigger_slash_menu', handler);
+    }, [loading, get]);
 
     const handleFolderPicked = (folderName: string) => {
         const pending = pendingInsertRef.current;
@@ -223,6 +259,7 @@ function CrepeBodyInner({ content, noteId, onSave, onSelectNote }: CrepeBodyProp
                 })
                 .use(remarkDirectivePlugin)
                 .use(remarkDirectiveFallbackPlugin)
+                .use(slashCursorTrackerPlugin)
                 .use(dashboardNode)
                 .use($view(dashboardNode.node, () => factory({ 
                     component: () => <DashboardNodeView onSelectNote={(id) => onSelectNoteRef.current(id)} />,
@@ -319,18 +356,33 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
     const [showTagInput, setShowTagInput] = useState(false);
     const [tagInputValue, setTagInputValue] = useState('');
     const [uniqueTags, setUniqueTags] = useState<string[]>([]);
+    const [recentTags, setRecentTags] = useState<string[]>([]);
     const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
     const tagInputRef = useRef<HTMLInputElement>(null);
     const tagContainerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (showTagInput) {
-            db.items.toArray().then(items => {
+            db.items.filter(i => !i.isDeleted).toArray().then(items => {
+                // All unique tags for filtering
                 const tags = new Set<string>();
                 items.forEach(i => {
                     if (i.tags) i.tags.forEach(t => tags.add(t));
                 });
                 setUniqueTags(Array.from(tags));
+
+                // Recent tags: based on last modified notes
+                const recent = new Set<string>();
+                const sortedItems = [...items].sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+                for (const item of sortedItems) {
+                    if (item.tags) {
+                        item.tags.forEach(t => {
+                            if (recent.size < 5) recent.add(t);
+                        });
+                    }
+                    if (recent.size >= 5) break;
+                }
+                setRecentTags(Array.from(recent));
             });
         }
     }, [showTagInput]);
@@ -340,8 +392,9 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
         if (cleanVal.length > 0) {
             return uniqueTags.filter(t => t.startsWith(cleanVal) && t !== cleanVal).slice(0, 5);
         }
-        return [];
-    }, [tagInputValue, uniqueTags]);
+        // If empty input, show recent tags
+        return recentTags;
+    }, [tagInputValue, uniqueTags, recentTags]);
 
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -759,8 +812,8 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
                                             value={tagInputValue}
                                             onChange={(e) => setTagInputValue(e.target.value)}
                                             onKeyDown={handleAddTag}
-                                            placeholder="tag name..."
-                                            className="bg-transparent border-none outline-none text-sm text-dark-bg dark:text-light-bg w-40"
+                                            placeholder="tag..."
+                                            className="bg-transparent border-none outline-none text-sm text-dark-bg dark:text-light-bg w-28 md:w-32"
                                         />
                                         {tagInputValue.trim() && (
                                             <button
@@ -774,8 +827,11 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
                                     </div>
                                     {suggestedTags.length > 0 && (
                                         <div
-                                            className="mt-1 border-t border-light-border dark:border-dark-border pt-1 px-2 pb-1 flex flex-col gap-0.5"
+                                            className="mt-1 border-t border-black/5 dark:border-white/10 pt-1.5 px-2 pb-1.5 flex flex-col gap-0.5"
                                         >
+                                            {!tagInputValue && (
+                                                <div className="text-[10px] font-bold text-dark-bg/30 dark:text-light-bg/30 uppercase tracking-widest px-1.5 mb-1 select-none">Recent</div>
+                                            )}
                                             {suggestedTags.map((tagMatch, idx) => (
                                                 <button
                                                     key={tagMatch || idx}
@@ -783,12 +839,12 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
                                                         setTagInputValue(tagMatch);
                                                         tagInputRef.current?.focus();
                                                     }}
-                                                    className={`w-full text-left text-xs rounded px-1.5 py-1 flex justify-between items-center group/sug ${idx === selectedSuggestionIndex
+                                                    className={`w-full text-left text-xs rounded px-1.5 py-1.5 flex justify-between items-center group/sug ${idx === selectedSuggestionIndex
                                                         ? 'bg-dark-bg/10 dark:bg-light-bg/10 text-dark-bg dark:text-light-bg'
                                                         : 'text-dark-bg/70 dark:text-light-bg/70 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5'
                                                         }`}
                                                 >
-                                                    <span>#{tagMatch}</span>
+                                                    <span className="font-medium">#{tagMatch}</span>
                                                 </button>
                                             ))}
                                         </div>
