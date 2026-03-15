@@ -405,11 +405,17 @@ function KanbanView({
                     onDrop={(e) => handleDrop(e, colName)}
                 >
                     {/* Column Header */}
-                    <div className="flex items-center justify-between px-5 py-4 border-b border-black/5 dark:border-white/5 bg-light-bg/50 dark:bg-dark-bg/50 backdrop-blur-sm">
+                    <div 
+                        className="flex items-center justify-between border-b border-black/5 dark:border-white/5 bg-light-bg/50 dark:bg-dark-bg/50 backdrop-blur-sm"
+                        style={{ padding: '16px 20px' }}
+                    >
                         <span className="text-[11px] font-bold uppercase tracking-widest text-dark-bg/60 dark:text-light-bg/60">
                             {colName}
                         </span>
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-dark-bg/40 dark:text-light-bg/40">
+                        <span 
+                            className="text-[10px] font-medium rounded-full bg-black/5 dark:bg-white/10 text-dark-bg/40 dark:text-light-bg/40"
+                            style={{ padding: '2px 8px' }}
+                        >
                             {colNotes.length}
                         </span>
                     </div>
