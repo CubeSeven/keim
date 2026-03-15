@@ -11,25 +11,21 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
     const [viewMode, setViewMode] = useState<ViewMode>(
         () => (localStorage.getItem(viewKey) as ViewMode | null) ?? 'table'
     );
+    const [isWide, setIsWide] = useState(
+        () => localStorage.getItem(`${viewKey}_wide`) === 'true'
+    );
     const [hasDateField, setHasDateField] = useState(false);
     const [hasSelectField, setHasSelectField] = useState(false);
-    
-    const wideKey = `keim_wide_${folderName}`;
-    const [isWide, setIsWide] = useState<boolean>(
-        () => localStorage.getItem(wideKey) === 'true'
-    );
-
-    const toggleWide = () => {
-        setIsWide(prev => {
-            const next = !prev;
-            localStorage.setItem(wideKey, String(next));
-            return next;
-        });
-    };
 
     const switchView = (mode: ViewMode) => {
         setViewMode(mode);
         localStorage.setItem(viewKey, mode);
+    };
+
+    const toggleWide = () => {
+        const next = !isWide;
+        setIsWide(next);
+        localStorage.setItem(`${viewKey}_wide`, String(next));
     };
 
     const handleRemove = () => {
@@ -44,9 +40,7 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
     if (hasSelectField) VIEW_MODES.push('kanban');
 
     return (
-        <div className={`dashboard-node py-2 group transition-all duration-300 ${
-            isWide ? 'w-[100vw] relative left-1/2 -translate-x-1/2 px-4 sm:px-8 md:px-12 max-w-7xl' : ''
-        }`}>
+        <div className={`dashboard-node py-4 group transition-all duration-500 ease-in-out ${isWide ? 'w-[calc(100vw-2rem)] md:w-[calc(100vw-4rem)] lg:w-[calc(100vw-8rem)] xl:w-[calc(100vw-16rem)] relative left-1/2 -translate-x-1/2' : ''}`}>
             {/* Title bar — visible only on hover */}
             <div className="flex items-center justify-between px-1 pb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                 <div className="flex items-center gap-2 text-dark-bg/40 dark:text-light-bg/35 select-none">
@@ -58,11 +52,10 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
 
                 {/* Right side: view switcher + trash */}
                 <div className="flex items-center gap-1">
-                    {/* Wide Toggle */}
                     <button
                         onClick={toggleWide}
-                        title={isWide ? "Narrow view" : "Wide view"}
-                        className={`w-6 h-6 flex items-center justify-center rounded-md transition-all mr-1 ${
+                        title={isWide ? "Standard width" : "Wide width"}
+                        className={`w-6 h-6 flex items-center justify-center rounded-md transition-all ${
                             isWide
                                 ? 'bg-dark-bg/10 dark:bg-white/10 text-dark-bg/70 dark:text-light-bg/70'
                                 : 'text-dark-bg/25 dark:text-light-bg/20 hover:text-dark-bg/60 dark:hover:text-light-bg/60 hover:bg-dark-bg/5 dark:hover:bg-white/5'
@@ -71,6 +64,8 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
                         {isWide ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
                     </button>
                     
+                    <div className="w-px h-3.5 bg-black/10 dark:bg-white/10 mx-0.5" />
+
                     {VIEW_MODES.map(mode => {
                         const Icon = mode === 'table' ? LayoutList : mode === 'gallery' ? LayoutGrid : mode === 'calendar' ? CalendarDays : Kanban;
                         const label = mode === 'table' ? 'Table' : mode === 'gallery' ? 'Gallery' : mode === 'calendar' ? 'Calendar' : 'Kanban';
