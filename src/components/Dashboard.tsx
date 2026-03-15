@@ -5,7 +5,7 @@ import type { SmartSchema } from '../lib/db';
 import { updateSearchIndex, miniSearch } from '../lib/search';
 import { triggerAutoSync } from '../lib/sync';
 import { getStorageMode, writeNoteToVault, notePathFromTitle } from '../lib/vault';
-import { FileText, ArrowDown, ArrowUp, ArrowUpDown, CalendarDays } from 'lucide-react';
+import { FileText, ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -14,8 +14,9 @@ import {
   createColumnHelper,
 } from '@tanstack/react-table';
 import type { SortingState } from '@tanstack/react-table';
-import { DayPicker } from 'react-day-picker';
-import 'react-day-picker/style.css';
+import FullCalendar from '@fullcalendar/react';
+import dayGridPlugin from '@fullcalendar/daygrid';
+import interactionPlugin from '@fullcalendar/interaction';
 
 export type ViewMode = 'table' | 'gallery' | 'calendar' | 'kanban';
 
@@ -23,7 +24,6 @@ interface DashboardProps {
     folderName: string;
     onSelectNote: (id: number) => void;
     viewMode: ViewMode;
-    switchView: (mode: ViewMode) => void;
     onHasDateField: (has: boolean) => void;
     onHasSelectField: (has: boolean) => void;
 }
@@ -147,8 +147,6 @@ function CalendarView({
     schema: SmartSchema;
     onSelectNote: (id: number) => void;
 }) {
-    const [selectedDay, setSelectedDay] = useState<Date | undefined>(undefined);
-
     // Find first date field in schema
     const dateField = schema.fields.find(f => f.type === 'date');
 
@@ -163,92 +161,353 @@ function CalendarView({
         );
     }
 
-    // Build map: ISO date string → notes
-    const notesByDate = useMemo(() => {
-        const map = new Map<string, RowData[]>();
-        notes.forEach(row => {
-            const val = row.meta[dateField.name];
-            if (val) {
-                const existing = map.get(val) || [];
-                map.set(val, [...existing, row]);
+    const events = Object.values(notes).map(row => {
+        const val = row.meta[dateField.name];
+        if (!val) return null;
+        return {
+            id: String(row.item.id),
+            title: row.item.title || 'Untitled',
+            date: val,
+            allDay: true,
+            extendedProps: {
+                icon: row.item.icon,
+                noteId: row.item.id,
             }
-        });
-        return map;
-    }, [notes, dateField.name]);
-
-    // Days that have notes — for DayPicker modifiers
-    const daysWithNotes = useMemo(() => {
-        return Array.from(notesByDate.keys()).map(ds => {
-            const [y, m, d] = ds.split('-').map(Number);
-            return new Date(y, m - 1, d);
-        });
-    }, [notesByDate]);
-
-    const selectedDayStr = selectedDay
-        ? `${selectedDay.getFullYear()}-${String(selectedDay.getMonth() + 1).padStart(2, '0')}-${String(selectedDay.getDate()).padStart(2, '0')}`
-        : null;
-    const selectedNotes = selectedDayStr ? (notesByDate.get(selectedDayStr) || []) : [];
+        };
+    }).filter(Boolean);
 
     return (
-        <div className="flex flex-col sm:flex-row gap-0 sm:gap-0 min-h-0">
-            {/* Calendar picker */}
-            <div className="flex justify-center px-2 py-3 border-b sm:border-b-0 sm:border-r border-black/5 dark:border-white/5">
-                <DayPicker
-                    mode="single"
-                    selected={selectedDay}
-                    onSelect={setSelectedDay}
-                    modifiers={{ hasNotes: daysWithNotes }}
-                    modifiersClassNames={{ hasNotes: 'rdp-has-notes' }}
-                    showOutsideDays
-                    captionLayout="dropdown"
-                />
-            </div>
+        <div className="p-4 rounded-xl calendar-container" style={{ minHeight: '600px' }}>
+            <style>{`
+                .calendar-container {
+                    --fc-border-color: rgba(0, 0, 0, 0.06); 
+                    font-family: inherit;
+                    display: flex;
+                    flex-direction: column;
+                }
+                .dark .calendar-container {
+                    --fc-border-color: rgba(255, 255, 255, 0.08); 
+                }
+                
+                /* Responsive Toolbar - Premium Desktop Layout */
+                .fc .fc-toolbar.fc-header-toolbar {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 24px;
+                    padding: 0 16px; /* Added left and right padding */
+                    min-height: 40px;
+                }
+                
+                /* Toolbar Chunks */
+                .fc .fc-toolbar-chunk {
+                    display: flex;
+                    align-items: center;
+                    gap: 16px;
+                }
+                
+                /* Title */
+                .fc .fc-toolbar-title {
+                    font-size: 1.25rem;
+                    font-weight: 700;
+                    color: inherit;
+                    line-height: 1;
+                    margin: 0 !important;
+                    padding: 0;
+                    display: flex;
+                    align-items: center;
+                }
+                
+                /* Button Base Styles */
+                .fc .fc-button-primary {
+                    background-color: transparent !important;
+                    border: 1px solid transparent !important;
+                    color: inherit !important;
+                    box-shadow: none !important;
+                    font-weight: 500;
+                    padding: 6px 12px;
+                    text-transform: capitalize;
+                    line-height: 1.4;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: all 0.2s ease;
+                    height: 32px; /* ensure uniform height */
+                }
+                
+                .fc .fc-button-primary:hover {
+                    background-color: rgba(128, 128, 128, 0.08) !important;
+                    border-radius: 6px;
+                }
+                
+                .fc .fc-button-primary:not(:disabled).fc-button-active, 
+                .fc .fc-button-primary:not(:disabled):active {
+                    background-color: rgba(128, 128, 128, 0.12) !important;
+                    color: inherit !important;
+                    box-shadow: none !important;
+                    border-radius: 6px;
+                }
+                
+                .fc .fc-button-primary:focus {
+                    box-shadow: none !important;
+                }
+                
+                /* Button Groups (Month/Week, Nav) */
+                .fc .fc-button-group {
+                    display: flex;
+                    align-items: center;
+                    height: 32px;
+                }
+                
+                /* Left-side chunk usually holds Prev/Next/Today on mobile if reordered, but here it's on the right */
+                .fc-toolbar-chunk:last-child > .fc-button-group:first-child {
+                    background: rgba(128, 128, 128, 0.06);
+                    border-radius: 8px;
+                    padding: 2px;
+                    height: 36px;
+                    gap: 2px;
+                }
+                
+                .fc-toolbar-chunk:last-child > .fc-button-group:first-child .fc-button {
+                    height: 32px;
+                    margin: 0;
+                    border-radius: 6px;
+                }
+                
+                /* Remove underlines from links */
+                .fc a {
+                    text-decoration: none !important;
+                    color: inherit;
+                }
+                
+                /* Header Cells (Mon, Tue, Wed...) */
+                .fc-theme-standard th {
+                    border: none;
+                    border-bottom: 1px solid var(--fc-border-color);
+                    padding: 12px 0 8px 0;
+                }
+                
+                .fc-col-header-cell-cushion {
+                    font-weight: 500;
+                    font-size: 0.85rem;
+                    color: rgba(128, 128, 128, 0.6);
+                    text-transform: capitalize;
+                }
+                
+                .dark .fc-col-header-cell-cushion {
+                    color: rgba(255, 255, 255, 0.5);
+                }
+                
+                /* Grid Cells */
+                .fc-theme-standard td, .fc-theme-standard th {
+                    border-color: var(--fc-border-color);
+                }
+                
+                .fc-daygrid-day-top {
+                    justify-content: flex-end;
+                    padding: 8px 10px 0 0;
+                }
+                
+                .fc-daygrid-day-number {
+                    font-size: 0.85rem;
+                    font-weight: 500;
+                    color: rgba(128, 128, 128, 0.7);
+                    line-height: 1;
+                }
+                
+                .dark .fc-daygrid-day-number {
+                    color: rgba(255, 255, 255, 0.6);
+                }
+                
+                /* Today Highlighting */
+                .fc .fc-daygrid-day.fc-day-today {
+                    background-color: rgba(0, 0, 0, 0.015) !important;
+                }
+                
+                .dark .fc .fc-daygrid-day.fc-day-today {
+                    background-color: rgba(255, 255, 255, 0.015) !important;
+                }
+                
+                .fc .fc-day-today .fc-daygrid-day-top {
+                    opacity: 1;
+                }
+                
+                .fc .fc-day-today .fc-daygrid-day-number {
+                    background-color: #ef4444;
+                    color: white !important;
+                    border-radius: 50%;
+                    width: 24px;
+                    height: 24px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 0;
+                    margin-right: -4px;
+                    margin-top: -4px;
+                }
+                
+                /* Event Cards */
+                .fc-event {
+                    cursor: pointer;
+                    border: 1px solid rgba(0, 0, 0, 0.06) !important;
+                    background: white !important;
+                    color: inherit !important;
+                    padding: 4px 6px;
+                    border-radius: 6px;
+                    font-size: 0.75rem;
+                    font-weight: 500;
+                    margin: 2px 6px 2px 6px !important;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+                    transition: all 0.2s ease;
+                    display: block;
+                }
+                
+                .fc-event:hover {
+                    background: #f9fafb !important;
+                    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.06);
+                    transform: translateY(-1px);
+                }
+                
+                .dark .fc-event {
+                    background: rgba(255, 255, 255, 0.04) !important;
+                    border-color: rgba(255, 255, 255, 0.08) !important;
+                }
+                
+                .dark .fc-event:hover {
+                    background: rgba(255, 255, 255, 0.08) !important;
+                }
+                
+                .fc-daygrid-event-dot {
+                    display: none;
+                }
+                
+                /* Mobile Layout - Single Row Precision */
+                @media (max-width: 640px) {
+                    .fc .fc-toolbar.fc-header-toolbar {
+                        display: flex;
+                        flex-direction: row;
+                        align-items: center;
+                        justify-content: space-between;
+                        flex-wrap: nowrap;
+                        gap: 8px;
+                        margin-bottom: 16px;
+                        padding: 0 12px; /* Add slightly smaller padding for mobile */
+                        min-height: 40px;
+                    }
+                    
+                    
+                    /* Title chunk (Left) */
+                    .fc .fc-toolbar-chunk:first-child {
+                        flex: 1 1 auto;
+                        justify-content: flex-start;
+                        min-width: 0; /* allows truncation */
+                        gap: 0;
+                    }
+                    .fc .fc-toolbar-title {
+                        font-size: 1.1rem !important;
+                        white-space: nowrap;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                    }
+                    
+                    /* Center chunk (Month/Week toggle) */
+                    .fc .fc-toolbar-chunk:nth-child(2) {
+                        flex: 0 0 auto;
+                        justify-content: center;
+                        gap: 0;
+                    }
+                    
+                    /* Right chunk (Prev, Today, Next) */
+                    .fc .fc-toolbar-chunk:last-child {
+                        flex: 0 0 auto;
+                        justify-content: flex-end;
+                        gap: 4px;
+                    }
+                    
+                    .fc-toolbar-chunk:last-child > .fc-button-group:first-child {
+                        display: none; /* Hide standard month/week buttons if we're moving them to center */
+                    }
+                    
+                    /* Custom M/W View Toggle in Center Chunk */
+                    .fc .fc-dayGridMonth-button, .fc .fc-dayGridWeek-button {
+                        padding: 0 !important;
+                        width: 32px;
+                        height: 32px !important;
+                        font-size: 0 !important; /* Hide original text */
+                        background: rgba(128, 128, 128, 0.08) !important;
+                        border-radius: 8px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        margin: 0 !important;
+                    }
+                    .fc .fc-dayGridMonth-button.fc-button-active, .fc .fc-dayGridWeek-button.fc-button-active {
+                        display: none !important; /* Hide the active one since it's a toggle */
+                    }
+                    .fc .fc-dayGridMonth-button:not(.fc-button-active)::after {
+                        content: 'M';
+                        font-size: 0.95rem;
+                        font-weight: 600;
+                        line-height: 1;
+                    }
+                    .fc .fc-dayGridWeek-button:not(.fc-button-active)::after {
+                        content: 'W';
+                        font-size: 0.95rem;
+                        font-weight: 600;
+                        line-height: 1;
+                    }
 
-            {/* Day detail panel */}
-            <div className="flex-1 p-4 min-w-0">
-                {selectedDay ? (
-                    selectedNotes.length > 0 ? (
-                        <div>
-                            <div className="text-xs font-semibold uppercase tracking-widest text-dark-bg/40 dark:text-light-bg/40 mb-3">
-                                {selectedDay.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-                                <span className="ml-2 text-dark-bg/25 dark:text-light-bg/25">{selectedNotes.length} note{selectedNotes.length !== 1 ? 's' : ''}</span>
-                            </div>
-                            <div className="space-y-2">
-                                {selectedNotes.map(row => (
-                                    <button
-                                        key={row.item.id}
-                                        onClick={() => onSelectNote(row.item.id!)}
-                                        className="w-full text-left px-3 py-2.5 rounded-lg border border-black/8 dark:border-white/8 hover:border-black/15 dark:hover:border-white/15 bg-light-bg/60 dark:bg-dark-bg/60 hover:bg-light-bg dark:hover:bg-dark-bg transition-all group/note"
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            {row.item.icon && <span>{row.item.icon}</span>}
-                                            <span className="text-sm font-medium text-dark-bg dark:text-light-bg group-hover/note:text-black dark:group-hover/note:text-white transition-colors">
-                                                {row.item.title || 'Untitled'}
-                                            </span>
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="h-full flex items-center justify-center text-sm text-dark-bg/35 dark:text-light-bg/35">
-                            No notes for this day.
-                        </div>
-                    )
-                ) : (
-                    <div className="h-full flex flex-col items-center justify-center gap-2 text-center">
-                        <CalendarDays size={28} className="text-dark-bg/20 dark:text-light-bg/20" />
-                        <div className="text-sm text-dark-bg/35 dark:text-light-bg/35">
-                            Select a day to see notes
-                        </div>
-                        {daysWithNotes.length > 0 && (
-                            <div className="text-xs text-dark-bg/25 dark:text-light-bg/25">
-                                {daysWithNotes.length} day{daysWithNotes.length !== 1 ? 's' : ''} with notes
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
+                    /* Navigation buttons precise sizing */
+                    .fc .fc-today-button {
+                        padding: 0 10px !important;
+                        font-size: 0.9rem !important;
+                        height: 32px !important;
+                    }
+                    .fc .fc-prev-button, .fc .fc-next-button {
+                        padding: 0 !important;
+                        width: 32px;
+                        height: 32px !important;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    }
+                }
+            `}</style>
+            <FullCalendar
+                plugins={[dayGridPlugin, interactionPlugin]}
+                initialView="dayGridMonth"
+                events={events as any}
+                eventClick={(info) => {
+                    info.jsEvent.preventDefault(); // Prevent URL navigation just in case
+                    info.jsEvent.stopPropagation();
+                    const noteId = info.event.extendedProps.noteId;
+                    if (noteId) onSelectNote(Number(noteId));
+                }}
+                eventContent={(arg) => {
+                    return (
+                        <button 
+                            className="flex items-center gap-1.5 overflow-hidden w-full px-1 text-left"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                const noteId = arg.event.extendedProps.noteId;
+                                if (noteId) onSelectNote(Number(noteId));
+                            }}
+                        >
+                            {arg.event.extendedProps.icon && (
+                                <span className="flex-shrink-0" style={{ fontSize: '1.2em' }}>{arg.event.extendedProps.icon}</span>
+                            )}
+                            <span className="truncate text-dark-bg/85 dark:text-light-bg/85">{arg.event.title}</span>
+                        </button>
+                    );
+                }}
+                height="600px"
+                headerToolbar={{
+                    left: 'title',
+                    center: 'dayGridMonth,dayGridWeek',
+                    right: 'prev,today,next'
+                }}
+            />
         </div>
     );
 }

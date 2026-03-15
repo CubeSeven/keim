@@ -15,6 +15,10 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@fullcalendar/core": "^6.1.20",
+    "@fullcalendar/daygrid": "^6.1.20",
+    "@fullcalendar/interaction": "^6.1.20",
+    "@fullcalendar/react": "^6.1.20",
     "@milkdown/crepe": "^7.19.0",
     "@milkdown/kit": "^7.19.0",
     "@milkdown/react": "^7.19.0",
@@ -33,7 +37,6 @@
     "lucide-react": "^0.577.0",
     "minisearch": "^7.2.0",
     "react": "^19.2.0",
-    "react-day-picker": "^9.14.0",
     "react-dom": "^19.2.0",
     "remark-directive": "^4.0.0",
     "unist-util-visit": "^5.1.0",

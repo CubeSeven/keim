@@ -334,7 +334,7 @@ export default function SidebarNode({ item, level, onAddNote, onAddFolder, onDel
                                             setContextMenu(null);
                                             useAppStore.getState().setSmartPopupState({ isOpen: true, folderId: item.id, folderTitle: item.title });
                                         }}>
-                                        <Database size={14} className="opacity-70" /> Make Smart
+                                        <Database size={14} className="opacity-70" /> {isSmartFolder ? 'Edit Properties' : 'Make Smart'}
                                     </button>
                                 )}
                                 <div className="h-px bg-light-border dark:bg-dark-border my-1" />

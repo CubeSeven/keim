@@ -138,7 +138,6 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
                     folderName={folderName}
                     onSelectNote={onSelectNote}
                     viewMode={viewMode}
-                    switchView={switchView}
                     onHasDateField={setHasDateField}
                     onHasSelectField={setHasSelectField}
                 />

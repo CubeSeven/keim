@@ -58,7 +58,7 @@ export function DashboardFolderPicker({ onPick, onClose }: DashboardFolderPicker
                     ) : smartFolders.length === 0 ? (
                         <div className="py-6 px-3 text-center text-xs text-dark-bg/50 dark:text-light-bg/40 leading-relaxed">
                             No Smart Folders yet.<br />
-                            <span className="opacity-70">Right-click a folder → <strong>Make Smart</strong></span>
+                            <span className="opacity-70">Right-click a folder → <strong>Make Smart</strong> or <strong>Edit Properties</strong></span>
                         </div>
                     ) : (
                         <ul className="space-y-0.5 pt-1">
