@@ -405,7 +405,7 @@ function KanbanView({
                     onDrop={(e) => handleDrop(e, colName)}
                 >
                     {/* Column Header */}
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-black/5 dark:border-white/5 bg-light-bg/50 dark:bg-dark-bg/50 backdrop-blur-sm">
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-black/5 dark:border-white/5 bg-light-bg/50 dark:bg-dark-bg/50 backdrop-blur-sm">
                         <span className="text-[11px] font-bold uppercase tracking-widest text-dark-bg/60 dark:text-light-bg/60">
                             {colName}
                         </span>
