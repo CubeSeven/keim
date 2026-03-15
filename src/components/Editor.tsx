@@ -627,7 +627,7 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
                 <div 
                     className="mx-auto w-full px-6 md:px-12 lg:px-16 pb-64 animate-pulse mt-8"
                     style={{
-                        maxWidth: '900px',
+                        maxWidth: initialContent.includes('::dashboard') ? 'none' : '900px',
                         paddingTop: window.innerWidth < 768 ? 'calc(5rem + var(--spacing-safe-top, 0px))' : 'calc(3rem + var(--spacing-safe-top, 0px))'
                     }}
                 >
@@ -675,7 +675,7 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
             <div
                 className="mx-auto w-full px-6 md:px-12 lg:px-16 pb-64"
                 style={{
-                    maxWidth: '900px',
+                    maxWidth: initialContent.includes('::dashboard') ? 'none' : '900px',
                     paddingTop: window.innerWidth < 768 ? 'calc(5rem + var(--spacing-safe-top, 0px))' : 'calc(3rem + var(--spacing-safe-top, 0px))'
                 }}
             >

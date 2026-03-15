@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNodeViewContext } from '@prosemirror-adapter/react';
 import Dashboard from '../components/Dashboard';
-import { Trash2, Database, LayoutList, LayoutGrid, CalendarDays, Kanban, Maximize, Minimize } from 'lucide-react';
+import { Trash2, Database, LayoutList, LayoutGrid, CalendarDays, Kanban } from 'lucide-react';
 import type { ViewMode } from '../components/Dashboard';
 
 export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number) => void }) => {
@@ -13,18 +13,6 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
     );
     const [hasDateField, setHasDateField] = useState(false);
     const [hasSelectField, setHasSelectField] = useState(false);
-    
-    // Store wide state in localStorage so it persists per-dashboard
-    const wideKey = `keim_wide_${folderName}`;
-    const [isWide, setIsWide] = useState<boolean>(
-        () => localStorage.getItem(wideKey) === 'true'
-    );
-
-    const toggleWide = () => {
-        const next = !isWide;
-        setIsWide(next);
-        localStorage.setItem(wideKey, String(next));
-    };
 
     const switchView = (mode: ViewMode) => {
         setViewMode(mode);
@@ -42,20 +30,8 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
     if (hasDateField) VIEW_MODES.push('calendar');
     if (hasSelectField) VIEW_MODES.push('kanban');
 
-    // CSS logic to break out of the 750px max-w editor container cleanly
-    // without using relative/vw hacks that trigger horizontal canvas scrolling
-    const breakoutStyle = isWide ? {
-        width: 'calc(100vw - 4rem)',
-        maxWidth: '1200px',
-        marginLeft: '50%',
-        transform: 'translateX(-50%)',
-    } : {};
-
     return (
-        <div 
-            className="dashboard-node py-4 group transition-all duration-300"
-            style={breakoutStyle}
-        >
+        <div className="dashboard-node py-2 group">
             {/* Title bar — visible only on hover */}
             <div className="flex items-center justify-between px-1 pb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                 <div className="flex items-center gap-2 text-dark-bg/40 dark:text-light-bg/35 select-none">
@@ -65,19 +41,8 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
                     </span>
                 </div>
 
-                {/* Right side: expand/collapse + view switcher + trash */}
+                {/* Right side: view switcher + trash */}
                 <div className="flex items-center gap-1">
-                    <button
-                        onClick={toggleWide}
-                        title={isWide ? "Restore width" : "Expand to wide view"}
-                        className="w-6 h-6 flex items-center justify-center rounded-md text-dark-bg/25 dark:text-light-bg/20 hover:text-dark-bg/60 dark:hover:text-light-bg/60 hover:bg-dark-bg/5 dark:hover:bg-white/5 transition-all mr-1"
-                    >
-                        {isWide ? <Minimize size={13} /> : <Maximize size={13} />}
-                    </button>
-                    
-                    {/* Divider */}
-                    <div className="w-px h-3.5 bg-black/10 dark:bg-white/10 mx-0.5 mr-1" />
-
                     {VIEW_MODES.map(mode => {
                         const Icon = mode === 'table' ? LayoutList : mode === 'gallery' ? LayoutGrid : mode === 'calendar' ? CalendarDays : Kanban;
                         const label = mode === 'table' ? 'Table' : mode === 'gallery' ? 'Gallery' : mode === 'calendar' ? 'Calendar' : 'Kanban';
