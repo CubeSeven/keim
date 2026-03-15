@@ -284,7 +284,7 @@ function GalleryView({
                 <button
                     key={row.item.id}
                     onClick={() => onSelectNote(row.item.id!)}
-                    className="group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-white/85 dark:bg-white/[0.08]"
+                    className="group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-white/95 dark:bg-white/[0.12]"
                     style={{
                         padding: '22px',
                         backdropFilter: 'blur(16px)',
@@ -428,7 +428,7 @@ function KanbanView({
                                 draggable="true"
                                 onDragStart={(e) => handleDragStart(e, row.item.id!)}
                                 onClick={() => onSelectNote(row.item.id!)}
-                                className="w-full group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-white/85 dark:bg-white/[0.08] cursor-grab active:cursor-grabbing"
+                                className="w-full group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-white/95 dark:bg-white/[0.12] cursor-grab active:cursor-grabbing"
                                 style={{
                                     padding: '20px',
                                     backdropFilter: 'blur(16px)',
