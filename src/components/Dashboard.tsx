@@ -321,7 +321,9 @@ function GalleryView({
                                         <span className="text-[10px] font-bold uppercase tracking-widest text-dark-bg/35 dark:text-light-bg/30 shrink-0">
                                             {f.name}
                                         </span>
-                                        <span className="text-[11px] font-medium text-dark-bg/65 dark:text-light-bg/60 truncate text-right">
+                                        <span className={`text-[11px] font-medium text-dark-bg/65 dark:text-light-bg/60 truncate text-right ${
+                                            f.type === 'select' ? 'px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 border border-black/5 dark:border-white/10' : ''
+                                        }`}>
                                             {f.type === 'checkbox' ? (val === 'true' ? '✓' : '✗') : val}
                                         </span>
                                     </div>
@@ -376,7 +378,11 @@ function KanbanView({
 
     const handleDragStart = (e: React.DragEvent, noteId: number) => {
         e.dataTransfer.setData('text/plain', noteId.toString());
-        // Optional: styling drag image or ghost
+        e.dataTransfer.effectAllowed = 'move';
+        // Create an invisible image to hide the default browser drag ghost (which is semi-transparent)
+        const ghost = new Image();
+        ghost.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        e.dataTransfer.setDragImage(ghost, 0, 0);
     };
 
     const handleDrop = (e: React.DragEvent, targetColumn: string) => {
@@ -424,14 +430,14 @@ function KanbanView({
                                 onClick={() => onSelectNote(row.item.id!)}
                                 className="w-full group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-light-bg/75 dark:bg-dark-ui/80 cursor-grab active:cursor-grabbing"
                                 style={{
-                                    padding: '16px',
+                                    padding: '22px',
                                     backdropFilter: 'blur(16px)',
                                     WebkitBackdropFilter: 'blur(16px)',
                                     boxShadow: '0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
                                 }}
                             >
                                 {/* Icon + Title */}
-                                <div className="flex items-start gap-2.5 mb-3">
+                                <div className="flex items-start gap-2.5 mb-4">
                                     {row.item.icon && (
                                         <span style={{ fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>{row.item.icon}</span>
                                     )}
@@ -447,19 +453,21 @@ function KanbanView({
                                 {schema.fields.length > 1 && (
                                     <>
                                         {schema.fields.some(f => f.name !== selectField.name && !!row.meta[f.name]) && (
-                                            <div style={{ borderTop: '1px solid rgba(128,128,128,0.12)', margin: '10px 0' }} />
+                                            <div style={{ borderTop: '1px solid rgba(128,128,128,0.12)', margin: '14px 0' }} />
                                         )}
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                             {schema.fields.map(f => {
                                                 if (f.name === selectField.name) return null; // Hide grouping field on the card itself
                                                 const val = row.meta[f.name] || '';
                                                 if (!val) return null;
                                                 return (
-                                                    <div key={f.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '2px 0' }}>
-                                                        <span className="text-[9px] font-bold uppercase tracking-widest text-dark-bg/35 dark:text-light-bg/30 shrink-0">
+                                                    <div key={f.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '4px 0' }}>
+                                                        <span className="text-[10px] font-bold uppercase tracking-widest text-dark-bg/35 dark:text-light-bg/30 shrink-0">
                                                             {f.name}
                                                         </span>
-                                                        <span className="text-[10px] font-medium text-dark-bg/65 dark:text-light-bg/60 truncate text-right">
+                                                        <span className={`text-[11px] font-medium text-dark-bg/65 dark:text-light-bg/60 truncate text-right ${
+                                                            f.type === 'select' ? 'px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 border border-black/5 dark:border-white/10' : ''
+                                                        }`}>
                                                             {f.type === 'checkbox' ? (val === 'true' ? '✓' : '✗') : val}
                                                         </span>
                                                     </div>

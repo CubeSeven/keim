@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNodeViewContext } from '@prosemirror-adapter/react';
 import Dashboard from '../components/Dashboard';
-import { Trash2, Database, LayoutList, LayoutGrid, CalendarDays, Kanban } from 'lucide-react';
+import { Trash2, Database, LayoutList, LayoutGrid, CalendarDays, Kanban, Maximize2, Minimize2 } from 'lucide-react';
 import type { ViewMode } from '../components/Dashboard';
 
 export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number) => void }) => {
@@ -13,6 +13,19 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
     );
     const [hasDateField, setHasDateField] = useState(false);
     const [hasSelectField, setHasSelectField] = useState(false);
+    
+    const wideKey = `keim_wide_${folderName}`;
+    const [isWide, setIsWide] = useState<boolean>(
+        () => localStorage.getItem(wideKey) === 'true'
+    );
+
+    const toggleWide = () => {
+        setIsWide(prev => {
+            const next = !prev;
+            localStorage.setItem(wideKey, String(next));
+            return next;
+        });
+    };
 
     const switchView = (mode: ViewMode) => {
         setViewMode(mode);
@@ -31,7 +44,9 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
     if (hasSelectField) VIEW_MODES.push('kanban');
 
     return (
-        <div className="dashboard-node py-2 group">
+        <div className={`dashboard-node py-2 group transition-all duration-300 ${
+            isWide ? 'w-[100vw] relative left-1/2 -translate-x-1/2 px-4 sm:px-8 md:px-12 max-w-7xl' : ''
+        }`}>
             {/* Title bar — visible only on hover */}
             <div className="flex items-center justify-between px-1 pb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                 <div className="flex items-center gap-2 text-dark-bg/40 dark:text-light-bg/35 select-none">
@@ -43,6 +58,19 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
 
                 {/* Right side: view switcher + trash */}
                 <div className="flex items-center gap-1">
+                    {/* Wide Toggle */}
+                    <button
+                        onClick={toggleWide}
+                        title={isWide ? "Narrow view" : "Wide view"}
+                        className={`w-6 h-6 flex items-center justify-center rounded-md transition-all mr-1 ${
+                            isWide
+                                ? 'bg-dark-bg/10 dark:bg-white/10 text-dark-bg/70 dark:text-light-bg/70'
+                                : 'text-dark-bg/25 dark:text-light-bg/20 hover:text-dark-bg/60 dark:hover:text-light-bg/60 hover:bg-dark-bg/5 dark:hover:bg-white/5'
+                        }`}
+                    >
+                        {isWide ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                    </button>
+                    
                     {VIEW_MODES.map(mode => {
                         const Icon = mode === 'table' ? LayoutList : mode === 'gallery' ? LayoutGrid : mode === 'calendar' ? CalendarDays : Kanban;
                         const label = mode === 'table' ? 'Table' : mode === 'gallery' ? 'Gallery' : mode === 'calendar' ? 'Calendar' : 'Kanban';
