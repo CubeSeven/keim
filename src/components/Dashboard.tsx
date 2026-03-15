@@ -606,20 +606,17 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
         <div className="group/dash rounded-lg overflow-hidden bg-light-ui/40 dark:bg-dark-ui/40 backdrop-blur-md border border-black/5 dark:border-white/5 ring-1 ring-black/5 dark:ring-white/10 flex flex-col">
 
 
+            {/* ── View Switcher Strip (hover-only, above all views) ── */}
+            <ViewSwitcherStrip viewMode={viewMode} hasDateField={hasDateField} switchView={switchView} />
+
             {/* ── Gallery View ── */}
             {viewMode === 'gallery' && (
-                <>
-                    <ViewSwitcherStrip viewMode={viewMode} hasDateField={hasDateField} switchView={switchView} />
-                    <GalleryView notes={notes} schema={schema!} onSelectNote={onSelectNote} />
-                </>
+                <GalleryView notes={notes} schema={schema!} onSelectNote={onSelectNote} />
             )}
 
             {/* ── Calendar View ── */}
             {viewMode === 'calendar' && (
-                <>
-                    <ViewSwitcherStrip viewMode={viewMode} hasDateField={hasDateField} switchView={switchView} />
-                    <CalendarView notes={notes} schema={schema!} onSelectNote={onSelectNote} />
-                </>
+                <CalendarView notes={notes} schema={schema!} onSelectNote={onSelectNote} />
             )}
 
             {/* ── Table View ── */}
@@ -673,35 +670,6 @@ export default function Dashboard({ folderName, onSelectNote }: DashboardProps) 
                                             >
                                                 <div className="w-[1px] h-4 bg-black/20 dark:bg-white/20" />
                                             </div>
-
-                                            {/* View Switcher — only on last header cell, visible on dashboard hover */}
-                                            {header.index === headerGroup.headers.length - 1 && (
-                                                <div
-                                                    className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/dash:opacity-100 transition-opacity duration-150 z-30"
-                                                    onClick={e => e.stopPropagation()}
-                                                >
-                                                    {(['table', 'gallery', 'calendar'] as const)
-                                                        .filter(m => m !== 'calendar' || hasDateField)
-                                                        .map(mode => {
-                                                        const Icon = mode === 'table' ? LayoutList : mode === 'gallery' ? LayoutGrid : CalendarDays;
-                                                        const label = mode === 'table' ? 'Table' : mode === 'gallery' ? 'Gallery' : 'Calendar';
-                                                        return (
-                                                            <button
-                                                                key={mode}
-                                                                onClick={() => switchView(mode)}
-                                                                title={label}
-                                                                className={`p-1.5 rounded-md transition-colors ${
-                                                                    viewMode === mode
-                                                                        ? 'bg-dark-bg/12 dark:bg-white/12 text-dark-bg dark:text-light-bg'
-                                                                        : 'text-dark-bg/40 dark:text-light-bg/40 hover:text-dark-bg/80 dark:hover:text-light-bg/80 hover:bg-dark-bg/6 dark:hover:bg-white/6'
-                                                                }`}
-                                                            >
-                                                                <Icon size={12} />
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
                                         </th>
                                     );
                                 })}
