@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNodeViewContext } from '@prosemirror-adapter/react';
 import Dashboard from '../components/Dashboard';
-import { Trash2, Database, LayoutList, LayoutGrid, CalendarDays } from 'lucide-react';
+import { Trash2, Database, LayoutList, LayoutGrid, CalendarDays, Kanban } from 'lucide-react';
 import type { ViewMode } from '../components/Dashboard';
 
 export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number) => void }) => {
@@ -12,6 +12,7 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
         () => (localStorage.getItem(viewKey) as ViewMode | null) ?? 'table'
     );
     const [hasDateField, setHasDateField] = useState(false);
+    const [hasSelectField, setHasSelectField] = useState(false);
 
     const switchView = (mode: ViewMode) => {
         setViewMode(mode);
@@ -25,9 +26,9 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
         }
     };
 
-    const VIEW_MODES: ViewMode[] = hasDateField
-        ? ['table', 'gallery', 'calendar']
-        : ['table', 'gallery'];
+    const VIEW_MODES: ViewMode[] = ['table', 'gallery'];
+    if (hasDateField) VIEW_MODES.push('calendar');
+    if (hasSelectField) VIEW_MODES.push('kanban');
 
     return (
         <div className="dashboard-node py-2 group">
@@ -43,8 +44,8 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
                 {/* Right side: view switcher + trash */}
                 <div className="flex items-center gap-1">
                     {VIEW_MODES.map(mode => {
-                        const Icon = mode === 'table' ? LayoutList : mode === 'gallery' ? LayoutGrid : CalendarDays;
-                        const label = mode === 'table' ? 'Table' : mode === 'gallery' ? 'Gallery' : 'Calendar';
+                        const Icon = mode === 'table' ? LayoutList : mode === 'gallery' ? LayoutGrid : mode === 'calendar' ? CalendarDays : Kanban;
+                        const label = mode === 'table' ? 'Table' : mode === 'gallery' ? 'Gallery' : mode === 'calendar' ? 'Calendar' : 'Kanban';
                         return (
                             <button
                                 key={mode}
@@ -99,6 +100,7 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
                     viewMode={viewMode}
                     switchView={switchView}
                     onHasDateField={setHasDateField}
+                    onHasSelectField={setHasSelectField}
                 />
             </div>
             <div className="h-4 invisible" />

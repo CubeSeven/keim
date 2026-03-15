@@ -17,7 +17,7 @@ import type { SortingState } from '@tanstack/react-table';
 import { DayPicker } from 'react-day-picker';
 import 'react-day-picker/style.css';
 
-export type ViewMode = 'table' | 'gallery' | 'calendar';
+export type ViewMode = 'table' | 'gallery' | 'calendar' | 'kanban';
 
 interface DashboardProps {
     folderName: string;
@@ -25,6 +25,7 @@ interface DashboardProps {
     viewMode: ViewMode;
     switchView: (mode: ViewMode) => void;
     onHasDateField: (has: boolean) => void;
+    onHasSelectField: (has: boolean) => void;
 }
 
 type RowData = {
@@ -274,7 +275,7 @@ function GalleryView({
         <div
             style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
                 gap: '14px',
                 padding: '16px',
             }}
@@ -285,14 +286,14 @@ function GalleryView({
                     onClick={() => onSelectNote(row.item.id!)}
                     className="group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-light-bg/75 dark:bg-dark-ui/80"
                     style={{
-                        padding: '16px',
+                        padding: '22px',
                         backdropFilter: 'blur(16px)',
                         WebkitBackdropFilter: 'blur(16px)',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
                     }}
                 >
                     {/* Icon + Title */}
-                    <div className="flex items-start gap-2.5 mb-3">
+                    <div className="flex items-start gap-2.5 mb-4">
                         {row.item.icon && (
                             <span style={{ fontSize: '1.5rem', lineHeight: 1, flexShrink: 0 }}>{row.item.icon}</span>
                         )}
@@ -306,17 +307,17 @@ function GalleryView({
 
                     {/* Divider */}
                     {schema.fields.some(f => !!row.meta[f.name]) && (
-                        <div className="border-t border-black/8 dark:border-white/8 mb-2.5" />
+                        <div style={{ borderTop: '1px solid rgba(128,128,128,0.12)', margin: '14px 0' }} />
                     )}
 
                     {/* Meta Fields */}
                     {schema.fields.length > 0 && (
-                        <div className="space-y-1.5">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             {schema.fields.map(f => {
                                 const val = row.meta[f.name] || '';
                                 if (!val) return null;
                                 return (
-                                    <div key={f.name} className="flex items-center justify-between gap-2 min-w-0">
+                                    <div key={f.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '4px 0' }}>
                                         <span className="text-[10px] font-bold uppercase tracking-widest text-dark-bg/35 dark:text-light-bg/30 shrink-0">
                                             {f.name}
                                         </span>
@@ -334,8 +335,156 @@ function GalleryView({
     );
 }
 
+// ─── Kanban View ─────────────────────────────────────────────────────────────
+function KanbanView({
+    notes,
+    schema,
+    onSelectNote,
+    onUpdateNote
+}: {
+    notes: RowData[];
+    schema: SmartSchema;
+    onSelectNote: (id: number) => void;
+    onUpdateNote: (id: number, field: string, value: string) => void;
+}) {
+    // Find the first select field to use as the grouping property
+    const selectField = schema.fields.find(f => f.type === 'select');
+    if (!selectField) {
+        return (
+            <div style={{ padding: '40px 20px', textAlign: 'center', opacity: 0.35, fontSize: '0.85rem' }}>
+                No 'select' field found for Kanban view.
+            </div>
+        );
+    }
+
+    const options = selectField.options || [];
+    
+    // Group notes by the select field value
+    const columns: Record<string, RowData[]> = {
+        'Uncategorized': []
+    };
+    options.forEach(opt => columns[opt] = []);
+
+    notes.forEach(row => {
+        const val = row.meta[selectField.name];
+        if (val && columns[val]) {
+            columns[val].push(row);
+        } else {
+            columns['Uncategorized'].push(row);
+        }
+    });
+
+    const handleDragStart = (e: React.DragEvent, noteId: number) => {
+        e.dataTransfer.setData('text/plain', noteId.toString());
+        // Optional: styling drag image or ghost
+    };
+
+    const handleDrop = (e: React.DragEvent, targetColumn: string) => {
+        e.preventDefault();
+        const noteIdStr = e.dataTransfer.getData('text/plain');
+        if (!noteIdStr) return;
+        const noteId = parseInt(noteIdStr, 10);
+        
+        // If dropping on "Uncategorized", clear the value. Otherwise, set it to the column name.
+        const newValue = targetColumn === 'Uncategorized' ? '' : targetColumn;
+        
+        onUpdateNote(noteId, selectField.name, newValue);
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault(); // Necessary to allow dropping
+    };
+
+    return (
+        <div className="flex h-[600px] overflow-x-auto overflow-y-hidden p-4 gap-4 scrollbar-thin scrollbar-thumb-light-border dark:scrollbar-thumb-dark-border">
+            {Object.entries(columns).map(([colName, colNotes]) => (
+                <div 
+                    key={colName}
+                    className="flex flex-col flex-shrink-0 w-[280px] bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5 overflow-hidden"
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, colName)}
+                >
+                    {/* Column Header */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-black/5 dark:border-white/5 bg-light-bg/50 dark:bg-dark-bg/50 backdrop-blur-sm">
+                        <span className="text-[11px] font-bold uppercase tracking-widest text-dark-bg/60 dark:text-light-bg/60">
+                            {colName}
+                        </span>
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-dark-bg/40 dark:text-light-bg/40">
+                            {colNotes.length}
+                        </span>
+                    </div>
+
+                    {/* Column Body (Scrollable if too many cards) */}
+                    <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-light-border dark:scrollbar-thumb-dark-border">
+                        {colNotes.map(row => (
+                            <button
+                                key={row.item.id}
+                                draggable="true"
+                                onDragStart={(e) => handleDragStart(e, row.item.id!)}
+                                onClick={() => onSelectNote(row.item.id!)}
+                                className="w-full group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-light-bg/75 dark:bg-dark-ui/80 cursor-grab active:cursor-grabbing"
+                                style={{
+                                    padding: '16px',
+                                    backdropFilter: 'blur(16px)',
+                                    WebkitBackdropFilter: 'blur(16px)',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
+                                }}
+                            >
+                                {/* Icon + Title */}
+                                <div className="flex items-start gap-2.5 mb-3">
+                                    {row.item.icon && (
+                                        <span style={{ fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>{row.item.icon}</span>
+                                    )}
+                                    <span
+                                        className="text-[13px] font-semibold text-dark-bg dark:text-light-bg leading-snug"
+                                        style={{ overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
+                                    >
+                                        {row.item.title || 'Untitled'}
+                                    </span>
+                                </div>
+
+                                {/* Meta Fields (exclude the grouping field to save space) */}
+                                {schema.fields.length > 1 && (
+                                    <>
+                                        {schema.fields.some(f => f.name !== selectField.name && !!row.meta[f.name]) && (
+                                            <div style={{ borderTop: '1px solid rgba(128,128,128,0.12)', margin: '10px 0' }} />
+                                        )}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {schema.fields.map(f => {
+                                                if (f.name === selectField.name) return null; // Hide grouping field on the card itself
+                                                const val = row.meta[f.name] || '';
+                                                if (!val) return null;
+                                                return (
+                                                    <div key={f.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '2px 0' }}>
+                                                        <span className="text-[9px] font-bold uppercase tracking-widest text-dark-bg/35 dark:text-light-bg/30 shrink-0">
+                                                            {f.name}
+                                                        </span>
+                                                        <span className="text-[10px] font-medium text-dark-bg/65 dark:text-light-bg/60 truncate text-right">
+                                                            {f.type === 'checkbox' ? (val === 'true' ? '✓' : '✗') : val}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </>
+                                )}
+                            </button>
+                        ))}
+                        
+                        {colNotes.length === 0 && (
+                            <div className="h-full flex items-center justify-center min-h-[100px] border-2 border-dashed border-black/5 dark:border-white/5 rounded-xl">
+                                <span className="text-xs text-dark-bg/25 dark:text-light-bg/25 font-medium">Drop cards here</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 // ─── Main Dashboard ────────────────────────────────────────────────────────────
-export default function Dashboard({ folderName, onSelectNote, viewMode, onHasDateField }: DashboardProps) {
+export default function Dashboard({ folderName, onSelectNote, viewMode, onHasDateField, onHasSelectField }: DashboardProps) {
     const [targetFolder, setTargetFolder] = useState<NoteItem | null>(null);
     const [schema, setSchema]             = useState<SmartSchema | null>(null);
     const [notes, setNotes]               = useState<RowData[]>([]);
@@ -354,6 +503,7 @@ export default function Dashboard({ folderName, onSelectNote, viewMode, onHasDat
 
         if (folderSchema) {
             onHasDateField(folderSchema.fields.some(f => f.type === 'date'));
+            onHasSelectField(folderSchema.fields.some(f => f.type === 'select'));
             const children = await db.items.where({ parentId: folder.id, type: 'note' }).toArray();
             const active   = children.filter(n => !n.isDeleted);
             const data     = await Promise.all(active.map(async n => {
@@ -573,6 +723,11 @@ export default function Dashboard({ folderName, onSelectNote, viewMode, onHasDat
             {/* ── Calendar View ── */}
             {viewMode === 'calendar' && (
                 <CalendarView notes={notes} schema={schema!} onSelectNote={onSelectNote} />
+            )}
+
+            {/* ── Kanban View ── */}
+            {viewMode === 'kanban' && (
+                <KanbanView notes={notes} schema={schema!} onSelectNote={onSelectNote} onUpdateNote={handleCellChange} />
             )}
 
             {/* ── Table View ── */}
