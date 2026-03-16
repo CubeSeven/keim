@@ -1,4 +1,4 @@
-import{d as i,b as u,w,O as d}from"./index-DyiI_M58.js";function y(t){const a={meta:{},body:t},e=t.match(/^---\n([\s\S]*?)\n---(?:\n|$)([\s\S]*)$/);if(!e)return a;const n=e[1],s=e[2],r={};for(const c of n.split(`
+import{d as i,b as u,w,O as d}from"./index-BbfHxjOq.js";function y(t){const a={meta:{},body:t},e=t.match(/^---\n([\s\S]*?)\n---(?:\n|$)([\s\S]*)$/);if(!e)return a;const n=e[1],s=e[2],r={};for(const c of n.split(`
 `)){const o=c.indexOf(":");if(o===-1)continue;const m=c.slice(0,o).trim(),l=c.slice(o+1).trim();m&&(r[m]=l)}return{meta:r,body:s}}function S(t,a){return Object.keys(t).length===0?a:`---
 ${Object.entries(t).map(([n,s])=>`${n}: ${s}`).join(`
 `)}
