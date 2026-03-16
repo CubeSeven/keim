@@ -61,12 +61,12 @@ export const DashboardNodeView = ({ onSelectNote }: { onSelectNote: (id: number)
 
     return (
         <div className="dashboard-node py-2 group">
-            {/* Title bar — visible only on hover */}
-            <div className="flex items-center justify-between px-1 pb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            {/* Title bar — visible on mobile, hover only on desktop */}
+            <div className="flex items-center justify-between px-1 pb-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-300">
                 <div className="flex items-center gap-2 text-dark-bg/40 dark:text-light-bg/35 select-none">
                     <Database size={12} className="text-indigo-400" />
                     <span className="text-[11px] font-bold uppercase tracking-widest">
-                        Dashboard: {folderName}
+                        {folderName}
                     </span>
                 </div>
 
