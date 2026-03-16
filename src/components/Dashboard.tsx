@@ -543,12 +543,9 @@ function GalleryView({
                 <button
                     key={row.item.id}
                     onClick={() => onSelectNote(row.item.id!)}
-                    className="group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-white/85 dark:bg-white/[0.08]"
+                    className="group/card text-left rounded-xl border border-black/5 dark:border-white/10 hover:border-black/15 dark:hover:border-white/20 hover:-translate-y-0.5 shadow-sm hover:shadow-md dark:shadow-black/20 dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-white dark:bg-[#1c1c21]"
                     style={{
                         padding: '22px',
-                        backdropFilter: 'blur(16px)',
-                        WebkitBackdropFilter: 'blur(16px)',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
                     }}
                 >
                     {/* Icon + Title */}
@@ -659,13 +656,13 @@ function KanbanView({
             {Object.entries(columns).map(([colName, colNotes]) => (
                 <div 
                     key={colName}
-                    className="flex flex-col flex-shrink-0 w-[320px] bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5 overflow-hidden"
+                    className="flex flex-col flex-shrink-0 w-[320px] bg-black/[0.03] dark:bg-white/[0.03] rounded-xl border border-black/5 dark:border-white/5 overflow-hidden"
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, colName)}
                 >
                     {/* Column Header */}
                     <div 
-                        className="flex items-center justify-between border-b border-black/5 dark:border-white/5 bg-light-bg/50 dark:bg-dark-bg/50 backdrop-blur-sm"
+                        className="flex items-center justify-between border-b border-black/5 dark:border-white/5 bg-transparent"
                         style={{ padding: '16px 20px' }}
                     >
                         <span className="text-[11px] font-bold uppercase tracking-widest text-dark-bg/60 dark:text-light-bg/60">
@@ -687,12 +684,9 @@ function KanbanView({
                                 draggable="true"
                                 onDragStart={(e) => handleDragStart(e, row.item.id!)}
                                 onClick={() => onSelectNote(row.item.id!)}
-                                className="w-full group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-white/85 dark:bg-white/[0.08] cursor-grab active:cursor-grabbing"
+                                className="w-full group/card text-left rounded-xl border border-black/5 dark:border-white/10 hover:border-black/15 dark:hover:border-white/20 hover:-translate-y-0.5 shadow-sm hover:shadow-md dark:shadow-black/20 dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 bg-white dark:bg-[#1c1c21] cursor-grab active:cursor-grabbing"
                                 style={{
                                     padding: '20px',
-                                    backdropFilter: 'blur(16px)',
-                                    WebkitBackdropFilter: 'blur(16px)',
-                                    boxShadow: '0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
                                 }}
                             >
                                 {/* Icon + Title */}
