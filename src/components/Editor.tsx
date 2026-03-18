@@ -24,6 +24,11 @@ import { $view, $prose } from '@milkdown/kit/utils';
 import { remarkDirectivePlugin, remarkDirectiveFallbackPlugin, dashboardNode } from '../plugins/dashboardNode';
 import { DashboardNodeView } from '../plugins/DashboardNodeView';
 import { DashboardFolderPicker } from './DashboardFolderPicker';
+import { wikiLinkNode, wikiLinkRemarkPlugin, wikiLinkInputRule } from '../plugins/wikiLinks';
+import { WikiLinkView } from '../plugins/WikiLinkView';
+import { temporalChipNode, temporalRemarkPlugin, temporalInputRule } from '../plugins/temporalChips';
+import { TemporalChipView } from '../plugins/TemporalChipView';
+import { LinkPreview } from '../plugins/LinkPreview';
 import 'katex/dist/katex.min.css';
 import '@milkdown/crepe/theme/common/style.css';
 import '@milkdown/crepe/theme/frame.css';
@@ -266,6 +271,22 @@ function CrepeBodyInner({ content, noteId, onSave, onSelectNote }: CrepeBodyProp
                     stopEvent: () => true, // Tell ProseMirror to completely ignore all DOM events inside this node
                     ignoreMutation: () => true // Tell ProseMirror to ignore all DOM changes inside React
                 })))
+                .use(wikiLinkNode)
+                .use(wikiLinkRemarkPlugin)
+                .use(wikiLinkInputRule)
+                .use($view(wikiLinkNode.node, () => factory({
+                    component: () => <WikiLinkView onSelectNote={(id) => onSelectNoteRef.current(id)} />,
+                    stopEvent: () => true,
+                    ignoreMutation: () => true
+                })))
+                .use(temporalChipNode)
+                .use(temporalRemarkPlugin)
+                .use(temporalInputRule)
+                .use($view(temporalChipNode.node, () => factory({
+                    component: TemporalChipView,
+                    stopEvent: () => true,
+                    ignoreMutation: () => true
+                })))
                 .use(listener);
 
             return crepe;
@@ -287,6 +308,7 @@ function CrepeBodyInner({ content, noteId, onSave, onSelectNote }: CrepeBodyProp
                     onClose={() => setShowFolderPicker(false)}
                 />
             )}
+            <LinkPreview />
         </>
     );
 }
@@ -625,10 +647,15 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
         return (
             <div className="h-full overflow-y-auto">
                 <div 
-                    className="mx-auto w-full px-6 md:px-12 lg:px-16 pb-64 animate-pulse mt-8"
+                    className={`mx-auto w-full pb-64 animate-pulse mt-8 ${initialContent.includes('::dashboard') ? '' : 'px-6 md:px-12 lg:px-16'}`}
                     style={{
-                        maxWidth: initialContent.includes('::dashboard') ? 'none' : '900px',
-                        paddingTop: window.innerWidth < 768 ? 'calc(5rem + var(--spacing-safe-top, 0px))' : 'calc(3rem + var(--spacing-safe-top, 0px))'
+                        maxWidth: initialContent.includes('::dashboard') ? '100%' : '900px',
+                        paddingTop: window.innerWidth < 768 ? 'calc(5rem + var(--spacing-safe-top, 0px))' : 'calc(3rem + var(--spacing-safe-top, 0px))',
+                        ...(initialContent.includes('::dashboard') && { 
+                            paddingLeft: window.innerWidth < 768 ? '0px' : '80px', 
+                            paddingRight: window.innerWidth < 768 ? '0px' : '24px',
+                            maxWidth: window.innerWidth < 768 ? '100%' : '1600px',
+                        })
                     }}
                 >
                     {/* Title Skeleton */}
@@ -673,10 +700,16 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
         <div className="h-full overflow-y-auto">
             {/* Notion-style: centered column, comfortable max-width, generous top padding */}
             <div
-                className="mx-auto w-full px-6 md:px-12 lg:px-16 pb-64"
+                className={`mx-auto w-full pb-64 ${initialContent.includes('::dashboard') ? '' : 'px-6 md:px-12 lg:px-16'}`}
                 style={{
-                    maxWidth: initialContent.includes('::dashboard') ? 'none' : '900px',
-                    paddingTop: window.innerWidth < 768 ? 'calc(5rem + var(--spacing-safe-top, 0px))' : 'calc(3rem + var(--spacing-safe-top, 0px))'
+                    maxWidth: initialContent.includes('::dashboard') ? '100%' : '900px',
+                    paddingTop: window.innerWidth < 768 ? 'calc(5rem + var(--spacing-safe-top, 0px))' : 'calc(3rem + var(--spacing-safe-top, 0px))',
+                    ...(initialContent.includes('::dashboard') && { 
+                        // Desktop: 80px left, 24px right. Mobile: 0px.
+                        paddingLeft: window.innerWidth < 768 ? '0px' : '80px', 
+                        paddingRight: window.innerWidth < 768 ? '0px' : '24px',
+                        maxWidth: window.innerWidth < 768 ? '100%' : '1600px',
+                    })
                 }}
             >
                 {/* ── Initial Sync Banner (first session sync, no lastSyncTime yet) ── */}
@@ -750,7 +783,7 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
                 )}
 
                 {/* ── Top Actions & Headers ── */}
-                <div className="group flex flex-col items-start gap-1 mb-2">
+                <div className={`group flex flex-col items-start gap-1 mb-2 ${initialContent.includes('::dashboard') ? 'px-6 md:px-0' : ''}`}>
                     {/* ── Icon Display (if set) ── */}
                     {note.icon && (
                         <div className="relative group/icon inline-block mb-2" ref={pickerRef}>
@@ -858,10 +891,11 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
                 {/* ── Title ── */}
                 <input
                     ref={titleInputRef}
-                    className="w-full text-4xl font-bold bg-transparent border-none outline-none
+                    className={`w-full text-4xl font-bold bg-transparent border-none outline-none
                                text-dark-bg dark:text-light-bg
                                placeholder-dark-bg/30 dark:placeholder-light-bg/30
-                               mb-5 leading-tight tracking-tight"
+                               mb-5 leading-tight tracking-tight
+                               ${initialContent.includes('::dashboard') ? 'px-6 md:px-0' : ''}`}
                     style={{ fontFamily: 'inherit', letterSpacing: '-0.01em' }}
                     value={title}
                     onChange={handleTitleChange}
@@ -870,21 +904,23 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
 
                 {/* ── Smart Properties Header ── */}
                 {smartSchema && (
-                    <PropertiesHeader 
-                        schema={smartSchema}
-                        content={initialContent}
-                        noteId={noteId}
-                        onUpdateContent={(nc) => {
-                            contentBuffer.set(noteId, nc);
-                            debouncedSaveContent(nc);
-                        }}
-                        onSelectNote={onSelectNote}
-                    />
+                    <div className={initialContent.includes('::dashboard') ? 'px-6 md:px-0' : ''}>
+                        <PropertiesHeader 
+                            schema={smartSchema}
+                            content={initialContent}
+                            noteId={noteId}
+                            onUpdateContent={(nc) => {
+                                contentBuffer.set(noteId, nc);
+                                debouncedSaveContent(nc);
+                            }}
+                            onSelectNote={onSelectNote}
+                        />
+                    </div>
                 )}
 
                 {/* ── Tags List (Below Title) ── */}
                 {note.tags && note.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-6">
+                    <div className={`flex flex-wrap gap-1.5 mb-6 ${initialContent.includes('::dashboard') ? 'px-6 md:px-0' : ''}`}>
                         {note.tags.map((tag, i) => (
                             <div key={`${tag}-${i}`} className="group/pill relative flex items-center bg-dark-bg/5 dark:bg-light-bg/5 text-dark-bg/70 dark:text-light-bg/70 px-2 py-1 md:py-0.5 rounded text-xs font-medium border border-dark-bg/2 dark:border-light-bg/2 transition-colors hover:bg-dark-bg/10 dark:hover:bg-light-bg/10">
                                 <span>#{tag}</span>

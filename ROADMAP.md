@@ -1,41 +1,45 @@
 # Keim Notes Roadmap
 
-This document captures planned features and architectural improvements for Keim.
-
-## 🌟 Future UI: Notion-like Views
-Expand the Smart Folder dashboards with dynamic views powered by YAML frontmatter.
-
-### 1. Board View (Kanban)
-*   **Goal:** Drag-and-drop task management.
-*   **Trigger:** Select a `select` field (e.g., "Status") to define columns.
-*   **Implementation:** Use `dnd-kit` for premium animations and high-performance dragging.
-
-### 2. Gallery View
-*   **Goal:** Visual-first grid for creative folders, recipe books, etc.
-*   **Trigger:** Auto-displays icons and metadata cards.
-*   **Implementation:** Clean CSS Grid layout with glassmorphic card styles.
-
-### 3. Calendar View
-*   **Goal:** Map notes to time.
-*   **Trigger:** Requires a `date` field.
-*   **Implementation:** Lightweight calendar grid (e.g., `react-day-picker`) integrated with frontmatter dates.
-
-### 4. Timeline
-*   **Goal:** Horizontal project mapping.
-*   **Trigger:** Requires two `date` fields ("Start" and "End").
+This document categorizes planned features by implementation effort and complexity to help prioritize development.
 
 ---
 
-## 🏗 Planned Infrastructure
-*   **Rich Image Support:** Native support for image fields and gallery thumbnails.
-*   **Shared Dashboards:** Ability to link a single dashboard view into multiple notes.
-*   **Advanced Relations:** Bi-directional linking in the Smart Table.
+## 🚀 Quick Wins (Low Effort, High Impact)
+*These items have low code complexity and can be implemented quickly to improve the daily UX.*
+
+*   **Beautified Links**: Enhanced rendering for internal and external links (CSS/UI tweaks).
+*   **Single Note Duplication**: A "Duplicate" button in the context menu for notes.
+*   **Popular App Integrations**: Inline chips and icons for links from YouTube, Twitter, GitHub, etc.
+*   **Gallery View Refinements**: Minor styling updates to the glassmorphic cards.
 
 ---
 
-## 🔌 Openness & Extensibility
-*   ✅ **File-Based API Documentation:** Formally defined YAML schema and folder structure — see [docs/API.md](docs/API.md).
-*   **CM6 Extension Bridge:** Allow power users to inject custom CodeMirror 6 extensions (VIM mode, custom linters, specialized widgets).
-*   **Sandboxed Plugin System:** Implement a secure, PWA-safe plugin loader for UI and logic extensions (e.g., custom property renderers or dashboard views).
-*   **Vault-Local Plugins:** Support loading plugins directly from a `.keim/plugins` folder within the user's vault for 100% portability.
+## 🛠 Mid-Range Features (Moderate Effort)
+*These require more logic or UI work but are still relatively straightforward.*
 
+*   **Pomodoro Timer**: Integrated productivity timer with system notification support.
+*   **App Notifications**: System-level alerts for sync events or timers.
+*   **Folder Duplication**: Recursive logic to clone entire folder structures in the DB and Vault.
+*   **Timeline View**: Horizontal mapping for folders with Start/End date fields.
+*   **Sync Expansion**: Completing the backend integration for Google Drive and OneDrive.
+
+---
+
+## 🏗 Strategic / High Complexity (Long-Term Goals)
+*Significant R&D or architectural changes required.*
+
+*   **End-to-End Encryption (E2EE)**: Optional AES-GCM encryption for `.md` files before sync/storage.
+*   **Toggle Lists**: Collapsible Notion-style list items (requires complex editor plugin work).
+*   **Multi-Column Grid Blocks**: Structural layout blocks within notes (1-4 columns).
+*   **Rich Image Support**: Native support for image fields and gallery thumbnails.
+*   **Advanced Relations**: Bi-directional linking in the Smart Table.
+*   **Sandboxed Plugin System**: Secure, PWA-safe plugin loader for UI extensions.
+
+---
+
+## ✅ Completed Recently
+*   **Kanban, Gallery, & Calendar Views**: Fully implemented in Dashboards.
+*   **Tag Filtering**: Sidebar tag clicks filter notes.
+*   **Local-First Vault**: Bi-directional sync for `.md` files.
+*   **Dropbox Sync**: Initial cloud backup solution.
+*   **API Documentation**: Formal YAML schema definition in `docs/API.md`.

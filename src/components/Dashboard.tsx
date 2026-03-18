@@ -1,11 +1,35 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
+import { createPortal } from 'react-dom';
 import { db, getFullPath, type NoteItem } from '../lib/db';
 import { readSchema, parseYamlFrontmatter, serializeYamlFrontmatter } from '../lib/smartProps';
 import type { SmartSchema } from '../lib/db';
 import { updateSearchIndex, miniSearch } from '../lib/search';
 import { triggerAutoSync } from '../lib/sync';
 import { getStorageMode, writeNoteToVault, notePathFromTitle } from '../lib/vault';
-import { FileText, ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { FileText, ArrowDown, ArrowUp, ArrowUpDown, Tag } from 'lucide-react';
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  KeyboardSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  pointerWithin,
+  useDroppable,
+  type DragStartEvent,
+  type DragOverEvent,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { snapCenterToCursor } from '@dnd-kit/modifiers';
+import { CSS } from '@dnd-kit/utilities';
 import {
   useReactTable,
   getCoreRowModel,
@@ -21,7 +45,8 @@ import interactionPlugin from '@fullcalendar/interaction';
 export type ViewMode = 'table' | 'gallery' | 'calendar' | 'kanban';
 
 interface DashboardProps {
-    folderName: string;
+    folderName?: string;
+    tagName?: string | null;
     onSelectNote: (id: number) => void;
     viewMode: ViewMode;
     onHasDateField: (has: boolean) => void;
@@ -350,7 +375,7 @@ function CalendarView({
                 .fc-event {
                     cursor: pointer;
                     border: 1px solid rgba(0, 0, 0, 0.06) !important;
-                    background: white !important;
+                    background: var(--color-card-bg, white) !important;
                     color: inherit !important;
                     padding: 4px 6px;
                     border-radius: 6px;
@@ -363,13 +388,12 @@ function CalendarView({
                 }
                 
                 .fc-event:hover {
-                    background: #f9fafb !important;
+                    background: rgba(128, 128, 128, 0.08) !important;
                     box-shadow: 0 3px 6px rgba(0, 0, 0, 0.06);
                     transform: translateY(-1px);
                 }
                 
                 .dark .fc-event {
-                    background: rgba(255, 255, 255, 0.04) !important;
                     border-color: rgba(255, 255, 255, 0.08) !important;
                 }
                 
@@ -519,7 +543,7 @@ function GalleryView({
     onSelectNote,
 }: {
     notes: RowData[];
-    schema: SmartSchema;
+    schema?: SmartSchema | null;
     onSelectNote: (id: number) => void;
 }) {
     if (notes.length === 0) {
@@ -546,7 +570,7 @@ function GalleryView({
                     className="group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 dark:bg-dark-ui"
                     style={{
                         padding: '22px',
-                        backgroundColor: 'white',
+                        backgroundColor: 'var(--color-card-bg)',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
                     }}
                 >
@@ -563,29 +587,33 @@ function GalleryView({
                         </span>
                     </div>
 
-                    {/* Divider */}
-                    {schema.fields.some(f => !!row.meta[f.name]) && (
-                        <div style={{ borderTop: '1px solid rgba(128,128,128,0.12)', margin: '14px 0' }} />
-                    )}
+                    {schema && (
+                        <>
+                            {/* Divider */}
+                            {schema.fields.some(f => !!row.meta[f.name]) && (
+                                <div style={{ borderTop: '1px solid rgba(128,128,128,0.12)', margin: '14px 0' }} />
+                            )}
 
-                    {/* Meta Fields */}
-                    {schema.fields.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            {schema.fields.map(f => {
-                                const val = row.meta[f.name] || '';
-                                if (!val) return null;
-                                return (
-                                    <div key={f.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '4px 0' }}>
-                                        <span className="text-[10px] font-bold uppercase tracking-widest text-dark-bg/35 dark:text-light-bg/30 shrink-0">
-                                            {f.name}
-                                        </span>
-                                        <span className="text-[11px] font-medium text-dark-bg/65 dark:text-light-bg/60 truncate text-right">
-                                            {f.type === 'checkbox' ? (val === 'true' ? '✓' : '✗') : val}
-                                        </span>
-                                    </div>
-                                );
-                            })}
-                        </div>
+                            {/* Meta Fields */}
+                            {schema.fields.length > 0 && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    {schema.fields.map(f => {
+                                        const val = row.meta[f.name] || '';
+                                        if (!val) return null;
+                                        return (
+                                            <div key={f.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '4px 0' }}>
+                                                <span className="text-[10px] font-bold uppercase tracking-widest text-dark-bg/35 dark:text-light-bg/30 shrink-0">
+                                                    {f.name}
+                                                </span>
+                                                <span className="text-[11px] font-medium text-dark-bg/65 dark:text-light-bg/60 truncate text-right">
+                                                    {f.type === 'checkbox' ? (val === 'true' ? '✓' : '✗') : val}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </>
                     )}
                 </button>
             ))}
@@ -593,19 +621,200 @@ function GalleryView({
     );
 }
 
+// ─── Kanban: Sortable Card ──────────────────────────────────────────────────
+const KanbanCard = memo(function KanbanCard({
+    row,
+    schema,
+    selectField,
+    onSelectNote,
+    isDragOverlay = false,
+}: {
+    row: RowData;
+    schema: SmartSchema;
+    selectField: { name: string; type: string };
+    onSelectNote: (id: number) => void;
+    isDragOverlay?: boolean;
+}) {
+    const id = String(row.item.id);
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({ id });
+
+    const style: React.CSSProperties = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.35 : 1,
+        padding: '20px',
+        backgroundColor: 'var(--color-card-bg)',
+        boxShadow: isDragOverlay
+            ? '0 16px 40px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.7)'
+            : '0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
+    };
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            {...attributes}
+            {...listeners}
+            className={[
+                'w-full group/card text-left rounded-xl border overflow-hidden cursor-grab active:cursor-grabbing focus:outline-none',
+                isDragOverlay
+                    ? 'border-black/20 dark:border-white/20 rotate-[1.5deg] scale-[1.02]'
+                    : 'border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40',
+                isDragging ? '' : 'transition-all duration-200',
+                'dark:bg-dark-ui',
+            ].join(' ')}
+            onClick={() => {
+                // Prevent drag click from triggering note selection if we actually dragged, 
+                // but since dnd-kit pointer sensors handle distance, a simple click passes through.
+                if (isDragging) return;
+                onSelectNote(row.item.id!);
+            }}
+        >
+            <div className="flex flex-col gap-0 min-w-0">
+                {/* Icon + Title */}
+                <div className="flex items-start gap-2.5 mb-3">
+                    {row.item.icon && (
+                        <span style={{ fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>{row.item.icon}</span>
+                    )}
+                    <span
+                        className="text-[13px] font-semibold text-dark-bg dark:text-light-bg leading-snug"
+                        style={{ overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
+                    >
+                        {row.item.title || 'Untitled'}
+                    </span>
+                </div>
+
+                {/* Meta Fields (exclude the grouping field) */}
+                {schema.fields.length > 1 && (
+                    <>
+                        {schema.fields.some(f => f.name !== selectField.name && !!row.meta[f.name]) && (
+                            <div style={{ borderTop: '1px solid rgba(128,128,128,0.12)', margin: '10px 0' }} />
+                        )}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {schema.fields.map(f => {
+                                if (f.name === selectField.name) return null;
+                                const val = row.meta[f.name] || '';
+                                if (!val) return null;
+                                return (
+                                    <div key={f.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '2px 0' }}>
+                                        <span className="text-[9px] font-bold uppercase tracking-widest text-dark-bg/35 dark:text-light-bg/30 shrink-0">
+                                            {f.name}
+                                        </span>
+                                        <span className="text-[10px] font-medium text-dark-bg/65 dark:text-light-bg/60 truncate text-right">
+                                            {f.type === 'checkbox' ? (val === 'true' ? '✓' : '✗') : val}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+});
+
+// ─── Kanban: Droppable Column ───────────────────────────────────────────────
+const KanbanColumn = memo(function KanbanColumn({
+    colName,
+    colNotes,
+    isOver,
+    schema,
+    selectField,
+    onSelectNote,
+}: {
+    colName: string;
+    colNotes: RowData[];
+    isOver: boolean;
+    schema: SmartSchema;
+    selectField: { name: string; type: string };
+    onSelectNote: (id: number) => void;
+}) {
+    const { setNodeRef } = useDroppable({
+        id: colName,
+    });
+
+    const itemIds = useMemo(() => colNotes.map(r => String(r.item.id)), [colNotes]);
+
+    return (
+        <div
+            ref={setNodeRef}
+            className={[
+                'flex flex-col flex-shrink-0 w-[320px] rounded-xl border overflow-hidden transition-colors duration-150',
+                isOver
+                    ? 'bg-black/[0.055] dark:bg-white/[0.07] border-black/12 dark:border-white/12'
+                    : 'bg-black/[0.03] dark:bg-white/[0.03] border-black/5 dark:border-white/5',
+            ].join(' ')}
+        >
+            {/* Column Header */}
+            <div
+                className="flex items-center justify-between border-b border-black/5 dark:border-white/5 bg-transparent"
+                style={{ padding: '16px 20px' }}
+            >
+                <span className="text-[11px] font-bold uppercase tracking-widest text-dark-bg/60 dark:text-light-bg/60">
+                    {colName}
+                </span>
+                <span
+                    className="text-[10px] font-medium rounded-full bg-black/5 dark:bg-white/10 text-dark-bg/40 dark:text-light-bg/40"
+                    style={{ padding: '2px 8px' }}
+                >
+                    {colNotes.length}
+                </span>
+            </div>
+
+            {/* Column Body */}
+            <SortableContext
+                items={itemIds}
+                strategy={verticalListSortingStrategy}
+            >
+                <div
+                    className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-light-border dark:scrollbar-thumb-dark-border"
+                    style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', minHeight: '80px' }}
+                >
+                    {colNotes.map(row => (
+                        <KanbanCard
+                            key={row.item.id}
+                            row={row}
+                            schema={schema}
+                            selectField={selectField}
+                            onSelectNote={onSelectNote}
+                        />
+                    ))}
+                    {colNotes.length === 0 && !isOver && (
+                        <div className="h-full flex items-center justify-center min-h-[80px] border-2 border-dashed border-black/5 dark:border-white/5 rounded-xl">
+                            <span className="text-xs text-dark-bg/25 dark:text-light-bg/25 font-medium">Drop cards here</span>
+                        </div>
+                    )}
+                    {colNotes.length === 0 && isOver && (
+                        <div className="min-h-[80px] rounded-xl border-2 border-dashed border-black/15 dark:border-white/15" />
+                    )}
+                </div>
+            </SortableContext>
+        </div>
+    );
+});
+
 // ─── Kanban View ─────────────────────────────────────────────────────────────
 function KanbanView({
     notes,
     schema,
     onSelectNote,
-    onUpdateNote
+    onUpdateNote,
+    onReorderNotes
 }: {
     notes: RowData[];
     schema: SmartSchema;
     onSelectNote: (id: number) => void;
     onUpdateNote: (id: number, field: string, value: string) => void;
+    onReorderNotes: (updates: { id: number; order: number }[]) => void;
 }) {
-    // Find the first select field to use as the grouping property
     const selectField = schema.fields.find(f => f.type === 'select');
     if (!selectField) {
         return (
@@ -616,138 +825,172 @@ function KanbanView({
     }
 
     const options = selectField.options || [];
+    const columnOrder = ['Uncategorized', ...options];
+
+    // columns state: Record<colName, RowData[]>
+    const buildColumns = useCallback((rows: RowData[]) => {
+        const cols: Record<string, RowData[]> = { 'Uncategorized': [] };
+        options.forEach(opt => { cols[opt] = []; });
+        rows.forEach(row => {
+            const val = row.meta[selectField.name];
+            if (val && cols[val] !== undefined) cols[val].push(row);
+            else cols['Uncategorized'].push(row);
+        });
+        return cols;
+    }, [options, selectField.name]);
+
+    const baseColumns = useMemo(() => buildColumns(notes), [notes, buildColumns]);
+    const [activeId, setActiveId] = useState<string | null>(null);
+    const [overColNameState, setOverColNameState] = useState<string | null>(null);
     
-    // Group notes by the select field value
-    const columns: Record<string, RowData[]> = {
-        'Uncategorized': []
-    };
-    options.forEach(opt => columns[opt] = []);
-
-    notes.forEach(row => {
-        const val = row.meta[selectField.name];
-        if (val && columns[val]) {
-            columns[val].push(row);
-        } else {
-            columns['Uncategorized'].push(row);
+    // Use a ref to track the latest over column without triggering renders instantly
+    const overColRef = useRef<string | null>(null);
+    
+    // Synchronize ref and state safely without loops
+    const setOverColName = useCallback((newVal: string | null) => {
+        if (overColRef.current !== newVal) {
+            overColRef.current = newVal;
+            setOverColNameState(newVal);
         }
-    });
+    }, []);
 
-    const handleDragStart = (e: React.DragEvent, noteId: number) => {
-        e.dataTransfer.setData('text/plain', noteId.toString());
-        // Optional: styling drag image or ghost
+    // Build a card-id → column lookup from baseColumns
+    const cardToBaseCol = useMemo(() => {
+        const map: Record<string, string> = {};
+        Object.entries(baseColumns).forEach(([col, rows]) => {
+            rows.forEach(r => { map[String(r.item.id)] = col; });
+        });
+        return map;
+    }, [baseColumns]);
+
+    // Compute active columns without mutating arrays during layout
+    const columns = useMemo(() => {
+        return baseColumns;
+    }, [baseColumns]);
+
+    const activeRow = useMemo(() => {
+        if (!activeId) return null;
+        const col = cardToBaseCol[activeId];
+        if (!col) return null;
+        return baseColumns[col]?.find(r => String(r.item.id) === activeId) ?? null;
+    }, [activeId, cardToBaseCol, baseColumns]);
+
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    );
+
+    const handleDragStart = ({ active }: DragStartEvent) => {
+        setActiveId(String(active.id));
     };
 
-    const handleDrop = (e: React.DragEvent, targetColumn: string) => {
-        e.preventDefault();
-        const noteIdStr = e.dataTransfer.getData('text/plain');
-        if (!noteIdStr) return;
-        const noteId = parseInt(noteIdStr, 10);
-        
-        // If dropping on "Uncategorized", clear the value. Otherwise, set it to the column name.
-        const newValue = targetColumn === 'Uncategorized' ? '' : targetColumn;
-        
+    const handleDragOver = ({ active, over }: DragOverEvent) => {
+        if (!over) { setOverColName(null); return; }
+        const activeCol = cardToBaseCol[String(active.id)];
+        // over.id can be a card id or a column id (droppable)
+        const overCol = cardToBaseCol[String(over.id)] ?? (columnOrder.includes(String(over.id)) ? String(over.id) : null);
+        if (!activeCol || !overCol || activeCol === overCol) { setOverColName(overCol); return; }
+
+        setOverColName(overCol);
+    };
+
+    const handleDragEnd = ({ active, over }: DragEndEvent) => {
+        setActiveId(null);
+        setOverColName(null);
+        if (!over) return;
+
+        const activeCol = cardToBaseCol[String(active.id)];
+        const overCol = cardToBaseCol[String(over.id)] ?? (columnOrder.includes(String(over.id)) ? String(over.id) : null);
+        if (!activeCol || !overCol) return;
+
+        // Reorder within same column
+        if (activeCol === overCol) {
+            const colNotes = baseColumns[activeCol] || [];
+            const oldIdx = colNotes.findIndex(r => String(r.item.id) === String(active.id));
+            const newIdx = colNotes.findIndex(r => String(r.item.id) === String(over.id));
+            
+            if (oldIdx !== -1 && newIdx !== -1 && oldIdx !== newIdx) {
+                const item = colNotes[oldIdx];
+                const newOrderArr = arrayMove(colNotes, oldIdx, newIdx);
+                
+                // Calculate safe global order (midpoint between neighbors)
+                const prevItem = newOrderArr[newIdx - 1];
+                const nextItem = newOrderArr[newIdx + 1];
+                
+                let newOrderValue = 0;
+                if (!prevItem && nextItem) {
+                    newOrderValue = (nextItem.item.order ?? 0) - 1000;
+                } else if (prevItem && !nextItem) {
+                    newOrderValue = (prevItem.item.order ?? 0) + 1000;
+                } else if (prevItem && nextItem) {
+                    newOrderValue = ((prevItem.item.order ?? 0) + (nextItem.item.order ?? 0)) / 2;
+                }
+                
+                onReorderNotes([{ id: item.item.id!, order: newOrderValue }]);
+            }
+            return;
+        }
+
+        // Commit new column to DB
+        const noteId = parseInt(String(active.id), 10);
+        const newValue = overCol === 'Uncategorized' ? '' : overCol;
         onUpdateNote(noteId, selectField.name, newValue);
     };
 
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault(); // Necessary to allow dropping
-    };
-
     return (
-        <div className="flex h-[600px] overflow-x-auto overflow-y-hidden p-4 gap-4 scrollbar-thin scrollbar-thumb-light-border dark:scrollbar-thumb-dark-border">
-            {Object.entries(columns).map(([colName, colNotes]) => (
-                <div 
-                    key={colName}
-                    className="flex flex-col flex-shrink-0 w-[320px] bg-black/[0.03] dark:bg-white/[0.03] rounded-xl border border-black/5 dark:border-white/5 overflow-hidden"
-                    onDragOver={handleDragOver}
-                    onDrop={(e) => handleDrop(e, colName)}
+        <DndContext
+            sensors={sensors}
+            collisionDetection={pointerWithin}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+        >
+            <div className="flex h-[600px] overflow-x-auto overflow-y-hidden p-4 gap-4 scrollbar-thin scrollbar-thumb-light-border dark:scrollbar-thumb-dark-border">
+                {columnOrder.map(colName => {
+                    const colNotes = columns[colName] ?? [];
+                    const isOver = overColNameState === colName;
+                    return (
+                        <KanbanColumn
+                            key={colName}
+                            colName={colName}
+                            colNotes={colNotes}
+                            isOver={isOver}
+                            schema={schema}
+                            selectField={selectField}
+                            onSelectNote={onSelectNote}
+                        />
+                    );
+                })}
+            </div>
+
+            {/* Drag Overlay — rendered on top of everything, follows cursor */}
+            {createPortal(
+                <DragOverlay
+                    modifiers={[snapCenterToCursor]}
+                    dropAnimation={{
+                        duration: 220,
+                        easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
+                    }}
                 >
-                    {/* Column Header */}
-                    <div 
-                        className="flex items-center justify-between border-b border-black/5 dark:border-white/5 bg-transparent"
-                        style={{ padding: '16px 20px' }}
-                    >
-                        <span className="text-[11px] font-bold uppercase tracking-widest text-dark-bg/60 dark:text-light-bg/60">
-                            {colName}
-                        </span>
-                        <span 
-                            className="text-[10px] font-medium rounded-full bg-black/5 dark:bg-white/10 text-dark-bg/40 dark:text-light-bg/40"
-                            style={{ padding: '2px 8px' }}
-                        >
-                            {colNotes.length}
-                        </span>
-                    </div>
-
-                    {/* Column Body (Scrollable if too many cards) */}
-                    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-light-border dark:scrollbar-thumb-dark-border" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                        {colNotes.map(row => (
-                            <button
-                                key={row.item.id}
-                                draggable="true"
-                                onDragStart={(e) => handleDragStart(e, row.item.id!)}
-                                onClick={() => onSelectNote(row.item.id!)}
-                                className="w-full group/card text-left rounded-xl border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 transition-all duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-black/15 dark:focus:ring-white/15 dark:bg-dark-ui cursor-grab active:cursor-grabbing"
-                                style={{
-                                    padding: '20px',
-                                    backgroundColor: 'white',
-                                    boxShadow: '0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
-                                }}
-                            >
-                                {/* Icon + Title */}
-                                <div className="flex items-start gap-2.5 mb-3">
-                                    {row.item.icon && (
-                                        <span style={{ fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>{row.item.icon}</span>
-                                    )}
-                                    <span
-                                        className="text-[13px] font-semibold text-dark-bg dark:text-light-bg leading-snug"
-                                        style={{ overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
-                                    >
-                                        {row.item.title || 'Untitled'}
-                                    </span>
-                                </div>
-
-                                {/* Meta Fields (exclude the grouping field to save space) */}
-                                {schema.fields.length > 1 && (
-                                    <>
-                                        {schema.fields.some(f => f.name !== selectField.name && !!row.meta[f.name]) && (
-                                            <div style={{ borderTop: '1px solid rgba(128,128,128,0.12)', margin: '10px 0' }} />
-                                        )}
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            {schema.fields.map(f => {
-                                                if (f.name === selectField.name) return null; // Hide grouping field on the card itself
-                                                const val = row.meta[f.name] || '';
-                                                if (!val) return null;
-                                                return (
-                                                    <div key={f.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '2px 0' }}>
-                                                        <span className="text-[9px] font-bold uppercase tracking-widest text-dark-bg/35 dark:text-light-bg/30 shrink-0">
-                                                            {f.name}
-                                                        </span>
-                                                        <span className="text-[10px] font-medium text-dark-bg/65 dark:text-light-bg/60 truncate text-right">
-                                                            {f.type === 'checkbox' ? (val === 'true' ? '✓' : '✗') : val}
-                                                        </span>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </>
-                                )}
-                            </button>
-                        ))}
-                        
-                        {colNotes.length === 0 && (
-                            <div className="h-full flex items-center justify-center min-h-[100px] border-2 border-dashed border-black/5 dark:border-white/5 rounded-xl">
-                                <span className="text-xs text-dark-bg/25 dark:text-light-bg/25 font-medium">Drop cards here</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            ))}
-        </div>
+                    {activeRow ? (
+                        <KanbanCard
+                            row={activeRow}
+                            schema={schema}
+                            selectField={selectField}
+                            onSelectNote={onSelectNote}
+                            isDragOverlay
+                        />
+                    ) : null}
+                </DragOverlay>,
+                document.body
+            )}
+        </DndContext>
     );
 }
 
 // ─── Main Dashboard ────────────────────────────────────────────────────────────
-export default function Dashboard({ folderName, onSelectNote, viewMode, onHasDateField, onHasSelectField }: DashboardProps) {
+export default function Dashboard({ folderName, tagName, onSelectNote, viewMode, onHasDateField, onHasSelectField }: DashboardProps) {
     const [targetFolder, setTargetFolder] = useState<NoteItem | null>(null);
     const [schema, setSchema]             = useState<SmartSchema | null>(null);
     const [notes, setNotes]               = useState<RowData[]>([]);
@@ -756,35 +999,88 @@ export default function Dashboard({ folderName, onSelectNote, viewMode, onHasDat
     const [sorting, setSorting]           = useState<SortingState>([]);
 
     const loadData = useCallback(async () => {
-        const folders = await db.items.where({ type: 'folder', title: folderName }).toArray();
-        const folder  = folders.find(f => !f.isDeleted);
-        if (!folder?.id) { setIsLoading(false); return; }
-        setTargetFolder(folder);
+        setIsLoading(true);
+        
+        let active: NoteItem[] = [];
+        let folderSchema: SmartSchema | null = null;
 
-        const folderSchema = await readSchema(folder.id);
+        if (tagName) {
+            // Tag-based filtering
+            const children = await db.items.where('tags').equals(tagName).filter(item => !item.isDeleted && item.type === 'note').toArray();
+            active = children;
+            // For now, tag view doesn't have a specific folder schema, 
+            // but we could eventually infer one or use a default.
+            setTargetFolder({ id: -1, title: `#${tagName}`, type: 'folder', parentId: 0, updated_at: Date.now() }); 
+        } else if (folderName) {
+            // Folder-based logic
+            const folders = await db.items.where({ type: 'folder', title: folderName }).toArray();
+            const folder  = folders.find(f => !f.isDeleted);
+            if (!folder?.id) { setIsLoading(false); return; }
+            setTargetFolder(folder);
+
+            folderSchema = await readSchema(folder.id);
+            const children = await db.items.where({ parentId: folder.id, type: 'note' }).toArray();
+            active = children.filter(n => !n.isDeleted);
+        }
+
+        active.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
         setSchema(folderSchema);
 
         if (folderSchema) {
             onHasDateField(folderSchema.fields.some(f => f.type === 'date'));
             onHasSelectField(folderSchema.fields.some(f => f.type === 'select'));
-            const children = await db.items.where({ parentId: folder.id, type: 'note' }).toArray();
-            const active   = children.filter(n => !n.isDeleted);
-            const data     = await Promise.all(active.map(async n => {
-                const c = await db.contents.get(n.id!);
-                const raw = c?.content || '';
-                return { item: n, meta: parseYamlFrontmatter(raw).meta, rawContent: raw };
-            }));
-            setNotes(data);
+        } else {
+            onHasDateField(false);
+            onHasSelectField(false);
         }
+
+        const data = await Promise.all(active.map(async n => {
+            const c = await db.contents.get(n.id!);
+            const raw = c?.content || '';
+            return { item: n, meta: parseYamlFrontmatter(raw).meta, rawContent: raw };
+        }));
+        setNotes(data);
         setIsLoading(false);
-    }, [folderName]);
+    }, [folderName, tagName, onHasDateField, onHasSelectField]);
 
     useEffect(() => {
         loadData();
     }, [loadData]);
 
 
+    const handleReorderNotes = useCallback(async (updates: { id: number; order: number }[]) => {
+        // Optimistically update local state to reflect the new order
+        setNotes(prev => {
+            const map = new Map(updates.map(u => [u.id, u.order]));
+            const newNotes = prev.map(n => {
+                if (map.has(n.item.id!)) {
+                    return { ...n, item: { ...n.item, order: map.get(n.item.id!)! } };
+                }
+                return n;
+            });
+            return newNotes.sort((a, b) => (a.item.order ?? 0) - (b.item.order ?? 0));
+        });
+
+        // Persist the changes to Dexie
+        await db.transaction('rw', db.items, async () => {
+            for (const { id, order } of updates) {
+                await db.items.update(id, { order });
+            }
+        });
+        
+        triggerAutoSync();
+    }, []);
+
     const handleCellChange = useCallback(async (noteId: number, key: string, val: string) => {
+        // Optimistically update UI to prevent flashing/teleporting during async db writes
+        setNotes(prev => prev.map(n => {
+            if (n.item.id === noteId) {
+                return { ...n, meta: { ...n.meta, [key]: val } };
+            }
+            return n;
+        }));
+
         const contentObj = await db.contents.get(noteId);
         const targetItem = await db.items.get(noteId);
         if (!contentObj || !targetItem) return;
@@ -797,6 +1093,7 @@ export default function Dashboard({ folderName, onSelectNote, viewMode, onHasDat
         await db.contents.put({ id: noteId, content: newContent });
         await db.items.update(noteId, { updated_at: Date.now() });
         
+        // Final state update with proper rawContent to keep everything in perfect sync
         setNotes(prev => prev.map(n => n.item.id === noteId ? { ...n, meta: newMeta, rawContent: newContent } : n));
 
         const allItems = await db.items.toArray();
@@ -938,34 +1235,40 @@ export default function Dashboard({ folderName, onSelectNote, viewMode, onHasDat
     if (isLoading) return (
         <div className="my-4 rounded-lg p-6 text-sm opacity-50 text-center animate-pulse">Loading dashboard…</div>
     );
-    if (!targetFolder) return (
+    if (!targetFolder && folderName) return (
         <div className="my-4 rounded-lg border border-red-500/20 bg-red-500/5 text-red-500 p-4 text-sm">
             <strong>Dashboard Error:</strong> Folder "{folderName}" not found.
         </div>
     );
-    if (!schema?.fields.length) return (
+    if (!schema?.fields.length && folderName) return (
         <div className="my-4 rounded-lg border border-black/5 dark:border-white/10 p-4 text-sm opacity-60 bg-black/5 dark:bg-white/5">
             <strong>Dashboard:</strong> "{folderName}" has no Smart Fields yet.
+        </div>
+    );
+    if (!notes.length && tagName) return (
+        <div className="my-12 flex flex-col items-center justify-center opacity-40">
+            <Tag size={48} strokeWidth={1} className="mb-4" />
+            <p className="text-sm font-medium">No notes tagged with #{tagName}</p>
         </div>
     );
 
 
     return (
-        <div className="rounded-lg overflow-hidden bg-light-ui/40 dark:bg-dark-ui/40 backdrop-blur-md border border-black/5 dark:border-white/5 ring-1 ring-black/5 dark:ring-white/10 flex flex-col">
+        <div className="md:rounded-lg rounded-none overflow-hidden bg-light-ui/40 dark:bg-dark-ui/40 backdrop-blur-md border-y md:border border-black/5 dark:border-white/5 md:ring-1 ring-black/5 dark:ring-white/10 flex flex-col">
 
             {/* ── Gallery View ── */}
-            {viewMode === 'gallery' && (
-                <GalleryView notes={notes} schema={schema!} onSelectNote={onSelectNote} />
+            {viewMode === 'gallery' && schema && (
+                <GalleryView notes={notes} schema={schema} onSelectNote={onSelectNote} />
             )}
 
             {/* ── Calendar View ── */}
-            {viewMode === 'calendar' && (
-                <CalendarView notes={notes} schema={schema!} onSelectNote={onSelectNote} />
+            {viewMode === 'calendar' && schema && (
+                <CalendarView notes={notes} schema={schema} onSelectNote={onSelectNote} />
             )}
 
             {/* ── Kanban View ── */}
-            {viewMode === 'kanban' && (
-                <KanbanView notes={notes} schema={schema!} onSelectNote={onSelectNote} onUpdateNote={handleCellChange} />
+            {viewMode === 'kanban' && schema && (
+                <KanbanView notes={notes} schema={schema} onSelectNote={onSelectNote} onUpdateNote={handleCellChange} onReorderNotes={handleReorderNotes} />
             )}
 
             {/* ── Table View ── */}
@@ -1071,7 +1374,7 @@ export default function Dashboard({ folderName, onSelectNote, viewMode, onHasDat
                             </tr>
                         ))}
                         {notes.length === 0 && (
-                            <tr><td colSpan={schema.fields.length + 1}
+                            <tr><td colSpan={table.getAllColumns().length}
                                 style={{ padding: '28px 20px', textAlign: 'center', opacity: 0.35, fontSize: '0.85rem' }}>
                                 No notes in this folder yet.
                             </td></tr>

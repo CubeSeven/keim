@@ -31,10 +31,9 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ onOpenSettings, onAddNote, onAddFolder, onUnlockVault, onDeleteItem }: SidebarProps) {
-    const { isSidebarOpen, setSidebarOpen, setSelectedNoteId, syncStatus, lastSyncTime, isVaultLocked } = useAppStore();
+    const { isSidebarOpen, setSidebarOpen, setSelectedNoteId, syncStatus, lastSyncTime, isVaultLocked, selectedTag, setSelectedTag } = useAppStore();
     const items = useLiveQuery(() => db.items.filter(item => !item.isDeleted).toArray());
 
-    const [selectedTag, setSelectedTag] = useState<string | null>(null);
     const [isTagsOpen, setIsTagsOpen] = useState(true);
 
     const storageMode = 'idx' as string; // Handled via NoteService now, but keeping prop for now to avoid complete UI break
@@ -215,7 +214,7 @@ export default function Sidebar({ onOpenSettings, onAddNote, onAddFolder, onUnlo
                                                             {isSelected && (
                                                                 <motion.div
                                                                     layoutId="tag-active-bg"
-                                                                    className="absolute inset-0 rounded-md bg-white/50 ring-1 shadow-sm"
+                                                                    className="absolute inset-0 rounded-md bg-white/40 dark:bg-white/5 border border-black/5 dark:border-white/10 shadow-sm"
                                                                     transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                                                                 />
                                                             )}

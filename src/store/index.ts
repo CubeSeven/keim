@@ -53,6 +53,12 @@ interface DefaultAppState {
 
     smartPopupState: { isOpen: boolean; folderId?: number; folderTitle?: string };
     setSmartPopupState: (state: { isOpen: boolean; folderId?: number; folderTitle?: string }) => void;
+
+    // -------------------------------------------------------------
+    // Tag Management
+    // -------------------------------------------------------------
+    selectedTag: string | null;
+    setSelectedTag: (tag: string | null) => void;
 }
 
 export const useAppStore = create<DefaultAppState>((set) => ({
@@ -131,4 +137,7 @@ export const useAppStore = create<DefaultAppState>((set) => ({
 
     smartPopupState: { isOpen: false },
     setSmartPopupState: (smartPopupState) => set({ smartPopupState }),
+
+    selectedTag: null,
+    setSelectedTag: (selectedTag) => set({ selectedTag }),
 }));

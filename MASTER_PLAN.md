@@ -22,7 +22,7 @@ Based on the architectural blueprint research, here is the master plan for build
 - Set up Dexie.js and define the schema: `items: '++id, parentId, type, title, *tags, updated_at'`.
 - Implement data access wrappers (`addItem`, `updateItem`, `moveItem`, `deleteItem`).
 - Support composite indexing on `[parentId+title]` for fast folder traversal.
-- *Future-proofing Check:* Prepare functions for potential AES-GCM encryption using the Web Crypto API.
+- **Data Security:** Implement optional AES-GCM encryption for `.md` files using the Web Crypto API to ensure privacy in the vault and across cloud sync.
 
 ### Phase 3: The Minimalist UI
 - Build the **Sidebar**: A fixed-width container rendering a recursive folder tree, using Tailwind `group` modifiers for interactions.

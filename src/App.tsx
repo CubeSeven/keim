@@ -2,7 +2,7 @@ import { useEffect, useCallback, Suspense, lazy } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import Sidebar from './components/Sidebar';
 import { db, addItem } from './lib/db';
-import { PanelLeft, HardDrive, FileText } from 'lucide-react';
+import { PanelLeft, HardDrive, FileText, Tag } from 'lucide-react';
 import { disconnectDropbox } from './lib/sync';
 import { getStorageMode, setStorageMode } from './lib/vault';
 import NavigationDock from './components/NavigationDock';
@@ -14,6 +14,7 @@ const SettingsModal = lazy(() => import('./components/SettingsModal'));
 const WelcomeScreen = lazy(() => import('./components/WelcomeScreen'));
 const CommandPalette = lazy(() => import('./components/CommandPalette').then(mod => ({ default: mod.CommandPalette })));
 const SmartFolderPopup = lazy(() => import('./components/SmartFolderPopup'));
+const Dashboard = lazy(() => import('./components/Dashboard'));
 
 import { mirage } from 'ldrs';
 mirage.register();
@@ -61,6 +62,7 @@ function App() {
       isVaultLocked,
       smartPopupState, setSmartPopupState,
       selectedFolderId,
+      selectedTag, setSelectedTag
   } = useAppStore();
 
   const {
@@ -122,6 +124,7 @@ function App() {
   // --- Global Creation Handlers ---
   const handleSelectNote = (id: number | null) => {
     setSelectedNoteId(id);
+    if (id !== null) setSelectedTag(null); // Clear tag selection when a note is opened
     if (id !== null && window.innerWidth < 768) setSidebarOpen(false);
   };
 
@@ -370,6 +373,33 @@ function App() {
                     lastSyncTime={lastSyncTime}
                   />
                 </Suspense>
+              </motion.div>
+            ) : selectedTag ? (
+              <motion.div
+                key="tag-view"
+                className="flex-1 flex flex-col h-full overflow-hidden"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.12, ease: 'easeInOut' }}
+              >
+                <div className="flex-1 overflow-y-auto pt-16 md:pt-20 px-6 md:px-12 lg:px-16">
+                  <div className="max-w-[1600px] mx-auto">
+                    <div className="flex items-center gap-3 mb-8">
+                       <div className="p-3 rounded-2xl bg-dark-bg/5 dark:bg-light-bg/5 text-dark-bg/60 dark:text-light-bg/60">
+                         <Tag size={24} />
+                       </div>
+                       <h1 className="text-3xl font-bold tracking-tight text-dark-bg dark:text-light-bg">#{selectedTag}</h1>
+                    </div>
+                    <Dashboard 
+                      tagName={selectedTag}
+                      viewMode="gallery" // Default to gallery for tag view
+                      onSelectNote={handleSelectNote}
+                      onHasDateField={() => {}}
+                      onHasSelectField={() => {}}
+                    />
+                  </div>
+                </div>
               </motion.div>
             ) : (
               <motion.div

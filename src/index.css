@@ -12,6 +12,7 @@
   --spacing-safe-bottom: env(safe-area-inset-bottom);
   --spacing-safe-left: env(safe-area-inset-left);
   --spacing-safe-right: env(safe-area-inset-right);
+  --color-card-bg: #FFFFFF;
 }
 
 @layer base {
@@ -66,6 +67,7 @@
   --crepe-color-tooltip-bg: #26272C;
   --crepe-color-tooltip-fg: #e6e6e6;
   --crepe-color-inline-code-bg: rgba(200, 200, 200, 0.12);
+  --color-card-bg: var(--color-dark-bg);
 }
 
 /* --- Outer wrapper fills the flex slot --- */
@@ -238,6 +240,10 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
 }
 
+.milkdown .milkdown-block-handle {
+  z-index: 10 !important;
+}
+
 /* ============================================================ */
 /* react-day-picker — monochrome theme overrides                 */
 /* ============================================================ */
@@ -287,4 +293,31 @@
 .dark .rdp-dropdown select {
   background: #26272C;
   color: #e6e6e6;
+}
+
+/* --- Inline Auto-Detection Features --- */
+
+.milkdown .temporal-chip {
+  padding: 0.25rem 0.75rem !important;
+  margin: 0 0.125rem;
+  position: relative;
+  z-index: 20;
+  pointer-events: auto;
+}
+
+.milkdown .wiki-link-chip {
+  padding: 0.25rem 0.75rem !important;
+  margin: 0 0.125rem;
+  position: relative;
+  z-index: 20;
+  pointer-events: auto;
+}
+
+.wiki-link-chip.ghost {
+  @apply opacity-60;
+}
+
+[data-type="temporal-chip"], [data-type="wiki-link"] {
+  display: inline-block;
+  vertical-align: middle;
 }
