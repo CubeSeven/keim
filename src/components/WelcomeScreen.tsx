@@ -100,10 +100,17 @@ export default function WelcomeScreen({ onPickVault, onUseBrowserStorage, isPick
                     </button>
                 </div>
 
-                {/* Footer */}
-                <div className="flex items-center gap-2 text-dark-bg/40 dark:text-light-bg/40 text-xs">
-                    <Cloud size={14} />
-                    <span>Optional Dropbox sync available in Settings after setup</span>
+                {/* Footer Disclaimer */}
+                <div className="flex flex-col items-center gap-3 text-center px-4">
+                    <p className="text-[11px] text-dark-bg/40 dark:text-light-bg/40 max-w-sm leading-relaxed">
+                        Keim is in <span className="font-bold text-indigo-500/80 uppercase tracking-tighter">Public Beta</span>. While stable, we recommend regular backups of your Vault. 
+                        Found a bug? <a href="https://github.com/CubeSeven/keim/issues" target="_blank" rel="noopener noreferrer" className="underline hover:text-indigo-500 transition-colors">Report it on GitHub</a>.
+                    </p>
+                    
+                    <div className="flex items-center gap-2 text-dark-bg/30 dark:text-light-bg/30 text-[10px] uppercase font-bold tracking-widest">
+                        <Cloud size={12} />
+                        <span>Optional Dropbox sync available in Settings</span>
+                    </div>
                 </div>
             </div>
         </div>

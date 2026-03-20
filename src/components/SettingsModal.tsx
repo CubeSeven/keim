@@ -192,10 +192,27 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                 <Command size={16} /> Shortcuts
                             </button>
                         </nav>
-                        <div className="mt-auto p-4">
-                            <p className="text-[10px] opacity-40 text-center font-mono uppercase tracking-widest">Keim Notes v{APP_VERSION}</p>
-                        </div>
-                    </div>
+                        <div className="mt-auto p-4 space-y-3">
+                           <div className="flex flex-col gap-1.5">
+                               <a 
+                                   href="https://github.com/CubeSeven/keim/issues" 
+                                   target="_blank" 
+                                   rel="noopener noreferrer"
+                                   className="flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400 bg-red-500/5 hover:bg-red-500/10 transition-colors border border-red-500/10"
+                               >
+                                   <AlertCircle size={14} /> Report a Bug
+                               </a>
+                               <a 
+                                   href="https://github.com/CubeSeven/keim" 
+                                   target="_blank" 
+                                   rel="noopener noreferrer"
+                                   className="flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider text-dark-bg/60 dark:text-light-bg/60 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 transition-colors border border-transparent hover:border-dark-bg/10 dark:hover:border-light-bg/10"
+                               >
+                                   <Command size={14} /> GitHub Project
+                               </a>
+                           </div>
+                           <p className="text-[10px] opacity-30 text-center font-mono uppercase tracking-widest">v{APP_VERSION}</p>
+                        </div>                    </div>
 
                     {/* Content Area */}
                     <div className="flex-1 flex flex-col relative overflow-hidden bg-light-bg dark:bg-dark-bg">
