@@ -1,7 +1,7 @@
 {
   "name": "notes-app",
   "private": true,
-  "version": "1.9.0",
+  "version": "1.9.1",
   "type": "module",
   "homepage": "https://CubeSeven.github.io/keim/",
   "scripts": {
@@ -43,6 +43,7 @@
     "minisearch": "^7.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-tweet": "^3.3.0",
     "remark-directive": "^4.0.0",
     "unist-util-visit": "^5.1.0",
     "zustand": "^5.0.11"

@@ -7,7 +7,6 @@ This document categorizes planned features by implementation effort and complexi
 ## 🚀 Quick Wins (Low Effort, High Impact)
 *These items have low code complexity and can be implemented quickly to improve the daily UX.*
 
-*   **Popular App Integrations**: Inline chips and icons for links from YouTube, Twitter, GitHub, etc.
 *   **Gallery View Refinements**: Minor styling updates to the glassmorphic cards.
 
 ---
@@ -36,6 +35,7 @@ This document categorizes planned features by implementation effort and complexi
 ---
 
 ## ✅ Completed Recently
+*   **Popular App Integrations**: Inline chips and icons for links from YouTube, Twitter, GitHub, Google Docs, Maps, etc.
 *   **Single Note Duplication**: A "Duplicate" button in the context menu for notes.
 *   **Beautified Links**: Enhanced rendering for internal and external links (CSS/UI tweaks).
 *   **Kanban, Gallery, & Calendar Views**: Fully implemented in Dashboards.

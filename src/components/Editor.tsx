@@ -28,6 +28,8 @@ import { wikiLinkNode, wikiLinkRemarkPlugin, wikiLinkInputRule } from '../plugin
 import { WikiLinkView } from '../plugins/WikiLinkView';
 import { temporalChipNode, temporalRemarkPlugin, temporalInputRule } from '../plugins/temporalChips';
 import { TemporalChipView } from '../plugins/TemporalChipView';
+import { appLinkNode, appLinkRemarkPlugin } from '../plugins/appLinks';
+import { AppLinkView } from '../plugins/appLinks/AppLinkView';
 import { LinkPreview } from '../plugins/LinkPreview';
 import 'katex/dist/katex.min.css';
 import '@milkdown/crepe/theme/common/style.css';
@@ -320,8 +322,15 @@ function CrepeBodyInner({ content, noteId, onSave, onSelectNote }: CrepeBodyProp
                 .use(temporalChipNode)
                 .use(temporalRemarkPlugin)
                 .use(temporalInputRule)
+                .use(appLinkNode)
+                .use(appLinkRemarkPlugin)
                 .use($view(temporalChipNode.node, () => factory({
                     component: TemporalChipView,
+                    stopEvent: () => true,
+                    ignoreMutation: () => true
+                })))
+                .use($view(appLinkNode.node, () => factory({
+                    component: AppLinkView,
                     stopEvent: () => true,
                     ignoreMutation: () => true
                 })))
