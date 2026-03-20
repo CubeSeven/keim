@@ -172,6 +172,7 @@ export class DropboxProvider implements CloudProvider {
             await this.dbx.filesUpload({
                 path: fullPath,
                 // The Dropbox SDK types are slightly strict, but they accept string | Blob.
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 contents: content as any,
                 mode: { '.tag': 'overwrite' }
             });

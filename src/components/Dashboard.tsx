@@ -500,6 +500,7 @@ function CalendarView({
             <FullCalendar
                 plugins={[dayGridPlugin, interactionPlugin]}
                 initialView="dayGridMonth"
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 events={events as any}
                 eventClick={(info) => {
                     info.jsEvent.preventDefault(); // Prevent URL navigation just in case
@@ -816,28 +817,30 @@ function KanbanView({
     onReorderNotes: (updates: { id: number; order: number }[]) => void;
 }) {
     const selectField = schema.fields.find(f => f.type === 'select');
-    if (!selectField) {
-        return (
-            <div style={{ padding: '40px 20px', textAlign: 'center', opacity: 0.35, fontSize: '0.85rem' }}>
-                No 'select' field found for Kanban view.
-            </div>
-        );
-    }
 
-    const options = selectField.options || [];
+    // Make options and columnOrder robust against missing selectField
+    const options = selectField?.options || [];
     const columnOrder = ['Uncategorized', ...options];
+
+    // options is now just a plain array, no useMemo needed unless we want to avoid recreating it
+    // Wait, the hook array needs options as dependency. Options array changes if selectField?.options changes reference.
+    const optionsStr = JSON.stringify(options); // stringify for dependency safety
 
     // columns state: Record<colName, RowData[]>
     const buildColumns = useCallback((rows: RowData[]) => {
         const cols: Record<string, RowData[]> = { 'Uncategorized': [] };
-        options.forEach(opt => { cols[opt] = []; });
+        const parsedOptions = JSON.parse(optionsStr);
+        parsedOptions.forEach((opt: string) => { cols[opt] = []; });
+        
+        if (!selectField) return cols;
+
         rows.forEach(row => {
             const val = row.meta[selectField.name];
             if (val && cols[val] !== undefined) cols[val].push(row);
             else cols['Uncategorized'].push(row);
         });
         return cols;
-    }, [options, selectField.name]);
+    }, [optionsStr, selectField]);
 
     const baseColumns = useMemo(() => buildColumns(notes), [notes, buildColumns]);
     const [activeId, setActiveId] = useState<string | null>(null);
@@ -898,7 +901,7 @@ function KanbanView({
     const handleDragEnd = ({ active, over }: DragEndEvent) => {
         setActiveId(null);
         setOverColName(null);
-        if (!over) return;
+        if (!over || !selectField) return;
 
         const activeCol = cardToBaseCol[String(active.id)];
         const overCol = cardToBaseCol[String(over.id)] ?? (columnOrder.includes(String(over.id)) ? String(over.id) : null);
@@ -937,6 +940,14 @@ function KanbanView({
         const newValue = overCol === 'Uncategorized' ? '' : overCol;
         onUpdateNote(noteId, selectField.name, newValue);
     };
+
+    if (!selectField) {
+        return (
+            <div style={{ padding: '40px 20px', textAlign: 'center', opacity: 0.35, fontSize: '0.85rem' }}>
+                No 'select' field found for Kanban view.
+            </div>
+        );
+    }
 
     return (
         <DndContext
@@ -1219,6 +1230,7 @@ export default function Dashboard({ folderName, tagName, onSelectNote, viewMode,
         return [...cols, ...fieldCols];
     }, [schema, onSelectNote, handleCellChange]);
 
+    // eslint-disable-next-line react-hooks/incompatible-library
     const table = useReactTable({
         data: notes,
         columns,

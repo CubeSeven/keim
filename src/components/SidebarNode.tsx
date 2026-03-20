@@ -7,7 +7,7 @@ import { useAppStore } from '../store';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Folder, FolderOpen, FileText, Plus, Trash2,
-    Database, Edit2, MoreVertical
+    Database, Edit2, MoreVertical, Copy
 } from 'lucide-react';
 
 interface SidebarNodeProps {
@@ -339,6 +339,17 @@ export default function SidebarNode({ item, level, onAddNote, onAddFolder, onDel
                                 )}
                                 <div className="h-px bg-light-border dark:bg-dark-border my-1" />
                             </>
+                        )}
+                        {item.type === 'note' && (
+                            <button className="w-full text-left px-3 py-2 hover:bg-dark-bg/5 flex items-center gap-2.5" 
+                                onClick={async (e) => { 
+                                    e.stopPropagation(); 
+                                    setContextMenu(null); 
+                                    const newId = await NoteService.duplicateNote(item);
+                                    if (newId) setSelectedNoteId(newId);
+                                }}>
+                                <Copy size={14} className="opacity-70" /> Duplicate
+                            </button>
                         )}
                         <button className="w-full text-left px-3 py-2 hover:bg-dark-bg/5 flex items-center gap-2.5" 
                             onClick={(e) => { e.stopPropagation(); setContextMenu(null); setIsRenaming(true); }}>

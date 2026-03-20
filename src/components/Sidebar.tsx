@@ -54,7 +54,7 @@ export default function Sidebar({ onOpenSettings, onAddNote, onAddFolder, onUnlo
         if (items && selectedTag && !uniqueTags.includes(selectedTag)) {
             setSelectedTag(null);
         }
-    }, [selectedTag, uniqueTags, items]);
+    }, [selectedTag, uniqueTags, items, setSelectedTag]);
 
     const tree = useMemo(() => {
         if (!items) return [];

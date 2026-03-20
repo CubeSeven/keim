@@ -5,10 +5,12 @@ import type { Node, Parent } from 'unist';
 
 // Remark plugin to parse [[Note Title]]
 const remarkWikiLink = () => (tree: Node) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     visit(tree, 'text', (node: any, index: number | undefined, parent: Parent | undefined) => {
         if (typeof index !== 'number' || !parent) return;
         const regex = /\[\[([^\]]+)\]\]/g;
         const value = node.value as string;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const nodes: any[] = [];
         let lastIndex = 0;
         let match;
@@ -41,6 +43,7 @@ const remarkWikiLink = () => (tree: Node) => {
         }
 
         if (nodes.length > 0) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (parent.children as any).splice(index, 1, ...nodes);
         }
     });
@@ -73,6 +76,7 @@ export const wikiLinkNode = $nodeSchema('wiki_link', () => ({
     parseMarkdown: {
         match: (node) => node.type === 'wikiLink',
         runner: (state, node, type) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             state.addNode(type, { title: (node as any).value });
         },
     },
@@ -87,7 +91,7 @@ export const wikiLinkNode = $nodeSchema('wiki_link', () => ({
 export const wikiLinkInputRule = $inputRule(() => new InputRule(
     /\[\[([^\]]+)\]\]$/,
     (state, match, start, end) => {
-        const [_text, title] = match;
+        const title = match[1];
         const nodeType = state.schema.nodes.wiki_link;
         if (!nodeType) return null;
 

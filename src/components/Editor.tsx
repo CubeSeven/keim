@@ -63,6 +63,43 @@ const slashCursorTrackerPlugin = $prose(() => new Plugin({
     })
 }));
 
+// Custom Prosemirror plugin to prevent link marks from extending when typing at the end of a link
+const linkCursorFixPlugin = $prose(() => new Plugin({
+    key: new PluginKey('LINK_CURSOR_FIX'),
+    appendTransaction: (transactions, oldState, newState) => {
+        // Only run if the selection changed
+        if (!transactions.some(tr => tr.selectionSet || tr.docChanged)) return;
+        if (!newState.selection.empty) return;
+        
+        const $pos = newState.selection.$from;
+        const nodeBefore = $pos.nodeBefore;
+        
+        if (nodeBefore && nodeBefore.isText) {
+            const linkMark = nodeBefore.marks.find(m => m.type.name === 'link');
+            if (linkMark) {
+                const nodeAfter = $pos.nodeAfter;
+                const isInsideLink = nodeAfter && nodeAfter.isText && nodeAfter.marks.some(m => m.type.name === 'link');
+                
+                // If we are at the very end of a link mark
+                if (!isInsideLink) {
+                    const tr = newState.tr;
+                    tr.removeStoredMark(linkMark.type);
+                    
+                    // If removeStoredMark changed storedMarks (i.e. it wasn't already excluded)
+                    if (tr.storedMarks && !tr.storedMarks.some(m => m.type.name === 'link')) {
+                        // Prevent infinite loops by checking if oldState already had this storedMark removed
+                        const oldStored = oldState.storedMarks;
+                        if (!oldStored || oldStored.some(m => m.type.name === 'link')) {
+                            return tr;
+                        }
+                    }
+                }
+            }
+        }
+        return undefined;
+    }
+}));
+
 // --- Module-level write-through buffer ---
 // Key: noteId, Value: latest markdown content
 // Synchronous — always up to date, never lost on unmount.
@@ -265,6 +302,7 @@ function CrepeBodyInner({ content, noteId, onSave, onSelectNote }: CrepeBodyProp
                 .use(remarkDirectivePlugin)
                 .use(remarkDirectiveFallbackPlugin)
                 .use(slashCursorTrackerPlugin)
+                .use(linkCursorFixPlugin)
                 .use(dashboardNode)
                 .use($view(dashboardNode.node, () => factory({ 
                     component: () => <DashboardNodeView onSelectNote={(id) => onSelectNoteRef.current(id)} />,

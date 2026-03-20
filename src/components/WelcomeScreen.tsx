@@ -5,7 +5,7 @@ interface WelcomeScreenProps {
     onPickVault: () => void;
     onUseBrowserStorage: () => void;
     isPickingVault: boolean;
-    installPrompt?: any;
+    installPrompt?: { prompt: () => void; userChoice: Promise<{ outcome: string; }> } | null;
     onInstallPWA?: () => void;
 }
 

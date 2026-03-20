@@ -6,12 +6,14 @@ import type { Node, Parent } from 'unist';
 
 // Remark plugin to detect dates in markdown
 const remarkTemporal = () => (tree: Node) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     visit(tree, 'text', (node: any, index: number | undefined, parent: Parent | undefined) => {
         if (typeof index !== 'number' || !parent) return;
         const value = node.value as string;
         const results = chrono.parse(value);
         if (results.length === 0) return;
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const nodes: any[] = [];
         let lastIndex = 0;
 
@@ -45,6 +47,7 @@ const remarkTemporal = () => (tree: Node) => {
         }
 
         if (nodes.length > 0) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (parent.children as any).splice(index, 1, ...nodes);
         }
     });
@@ -82,7 +85,9 @@ export const temporalChipNode = $nodeSchema('temporal_chip', () => ({
         match: (node) => node.type === 'temporal',
         runner: (state, node, type) => {
             state.addNode(type, { 
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 value: (node as any).value, 
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 date: (node as any).date 
             });
         },

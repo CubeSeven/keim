@@ -4,7 +4,9 @@ import { visit } from 'unist-util-visit';
 
 export const remarkDirectivePlugin = $remark('remarkDirective', () => remarkDirective);
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const remarkFallbackDirectives = () => (tree: any) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     visit(tree, (node: any) => {
         if (['textDirective', 'leafDirective', 'containerDirective'].includes(node.type)) {
             if (node.name !== 'dashboard') {

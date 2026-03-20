@@ -5,6 +5,30 @@ import { triggerAutoSync } from './sync';
 
 export const NoteService = {
     /**
+     * Duplicates a note and its content.
+     */
+    async duplicateNote(item: NoteItem): Promise<number | undefined> {
+        if (!item.id || item.type !== 'note') return;
+
+        const contentObj = await db.contents.get(item.id);
+        const originalContent = contentObj?.content || '';
+
+        let newTitle = `${item.title} (Copy)`;
+        let counter = 1;
+        
+        const allItems = await db.items.toArray();
+        const siblings = allItems.filter(i => i.parentId === item.parentId && !i.isDeleted);
+        
+        while (siblings.some(i => i.title === newTitle)) {
+            counter++;
+            newTitle = `${item.title} (Copy ${counter})`;
+        }
+
+        const newId = await NoteService.createNote(item.parentId, newTitle, originalContent);
+        return newId;
+    },
+
+    /**
      * Creates a new note, writes it to Vault (if enabled), and queues sync.
      * @returns The newly created item ID
      */
