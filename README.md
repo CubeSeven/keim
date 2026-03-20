@@ -1,73 +1,57 @@
-# React + TypeScript + Vite
+# Keim Notes
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Think in fragments, organize in systems.
 
-Currently, two official plugins are available:
+Keim is a minimal, local-first note-taking application designed for privacy and speed. It turns plain Markdown files into structured databases without the need for complex configuration or proprietary formats.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+[**Launch App**](https://CubeSeven.github.io/keim/)
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🌟 Core Philosophy
 
-## Expanding the ESLint configuration
+- **Local-First:** Your notes live on your disk, not our servers. We use the native File System Access API where available.
+- **Markdown Native:** Your data is stored in standard `.md` files with YAML frontmatter. Readable by any text editor.
+- **Zero Friction:** No accounts, no tracking, no subscription. Just you and your thoughts.
+- **Extensible:** A modular plugin system built on top of Milkdown and ProseMirror.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 🚀 Key Features
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- **Smart Properties:** Define custom schemas for folders to add "Notion-like" metadata to your notes.
+- **Dynamic Dashboards:** Visualize your notes instantly with Kanban, Gallery, and Calendar views.
+- **Popular App Integrations:** Beautiful, lightweight chips and rich previews for YouTube, X (Twitter), GitHub, Google Docs, and more.
+- **Wiki Links:** Connect your thoughts with `[[Internal Linking]]`.
+- **PWA Ready:** Install it on your desktop or mobile device. Works offline.
+- **Cloud Sync:** Optional, lightweight sync via Dropbox.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## 🛠 Tech Stack
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- **Framework:** React 19 + TypeScript
+- **Editor:** Milkdown (ProseMirror)
+- **Database:** Dexie.js (IndexedDB)
+- **Styling:** Tailwind CSS 4
+- **Animation:** Framer Motion
+
+## 🏗 Development
+
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Run tests
+npm run test:run
+
+# Build for production
+npm run build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 🤝 Contributing
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Keim is open source and in **Public Beta**. We welcome contributions, bug reports, and feature requests. Feel free to open an issue or submit a pull request on our [GitHub repository](https://github.com/CubeSeven/keim).
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).
