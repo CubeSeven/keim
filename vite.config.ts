@@ -60,4 +60,18 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('@milkdown') || id.includes('prosemirror')) {
+            return 'vendor-milkdown';
+          }
+          if (id.includes('@codemirror') || id.includes('codemirror')) {
+            return 'vendor-codemirror';
+          }
+        }
+      }
+    }
+  }
 })

@@ -9,6 +9,21 @@
 const VAULT_IDB_KEY = 'keim_vault_handle';
 const VAULT_MODE_LS_KEY = 'keim_storage_mode'; // 'vault' | 'indexeddb'
 
+// --- FSA API Type Extensions ---
+// These are not fully standardized in TypeScript's lib.dom yet.
+interface FileSystemHandleExt extends FileSystemFileHandle {
+    queryPermission(descriptor: { mode: 'read' | 'readwrite' }): Promise<PermissionState>;
+    requestPermission(descriptor: { mode: 'read' | 'readwrite' }): Promise<PermissionState>;
+    entries(): AsyncIterable<[string, FileSystemHandle]>;
+}
+interface FSAWritableStream {
+    write(data: string | ArrayBuffer | Blob): Promise<void>;
+    close(): Promise<void>;
+}
+interface FileSystemFileHandleWritable {
+    createWritable(): Promise<FSAWritableStream>;
+}
+
 // --- Feature Detection ---
 
 export function isFileSystemSupported(): boolean {
@@ -94,16 +109,14 @@ export async function restoreVaultHandle(requestPermissionIfPrompt = false): Pro
     const handle = await loadVaultHandle();
     if (!handle) return null;
     try {
-        // Using any since TypeScript types for FileSystemHandle are sometimes incomplete
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const handleAny = handle as any;
+        const handleExt = handle as unknown as FileSystemHandleExt;
 
         // 1. Check current permission silently
-        let permission = await handleAny.queryPermission({ mode: 'readwrite' });
+        let permission = await handleExt.queryPermission({ mode: 'readwrite' });
 
         // 2. Request permission if needed AND we are allowed to prompt (must be called from user gesture)
         if (permission === 'prompt' && requestPermissionIfPrompt) {
-            permission = await handleAny.requestPermission({ mode: 'readwrite' });
+            permission = await handleExt.requestPermission({ mode: 'readwrite' });
         }
 
         if (permission === 'granted') {
@@ -142,8 +155,7 @@ async function readDirRecursive(
     basePath: string,
     tree: VaultTree
 ): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for await (const [name, entry] of (dirHandle as any).entries()) {
+    for await (const [name, entry] of (dirHandle as unknown as FileSystemHandleExt).entries()) {
         // Skip hidden files/folders (like .git, .DS_Store)
         if (name.startsWith('.')) continue;
 
@@ -164,7 +176,7 @@ async function readDirRecursive(
     }
 }
 
-export async function readVaultTree(): Promise<VaultTree | null> {
+async function readVaultTree(): Promise<VaultTree | null> {
     if (!_vaultHandle) return null;
     const tree: VaultTree = { notes: [], folders: [] };
     await readDirRecursive(_vaultHandle, '', tree);
@@ -173,7 +185,7 @@ export async function readVaultTree(): Promise<VaultTree | null> {
 
 // --- Note Read/Write ---
 
-export async function readNoteContent(notePath: string): Promise<string> {
+async function readNoteContent(notePath: string): Promise<string> {
     if (!_vaultHandle) throw new Error('No vault open');
     const parts = notePath.split('/');
     let dir: FileSystemDirectoryHandle = _vaultHandle;
@@ -193,8 +205,7 @@ export async function writeNoteToVault(notePath: string, content: string): Promi
         dir = await dir.getDirectoryHandle(parts[i], { create: true });
     }
     const fileHandle = await dir.getFileHandle(parts[parts.length - 1], { create: true });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const writable = await (fileHandle as any).createWritable();
+    const writable = await (fileHandle as unknown as FileSystemFileHandleWritable).createWritable();
     await writable.write(content);
     await writable.close();
 }
@@ -229,12 +240,117 @@ export function notePathFromTitle(title: string, parentPath: string): string {
     return parentPath ? `${parentPath}/${safeName}` : safeName;
 }
 
+/**
+ * Synchronize the physical vault directory into IndexedDB.
+ *
+ * Reads the vault file tree, creates/updates/soft-deletes items in Dexie to
+ * match, then reconciles the disk so the two stay in sync.
+ *
+ * Extracted from `useAppInit` so it can live at the library layer and be
+ * independently tested without needing React hooks.
+ *
+ * @param selectedNotePath  The last-known selected note path (from persisted store).
+ * @param setSelectedNoteId Callback to update the selected note ID in the store.
+ */
+export async function loadVaultIntoDb(
+    selectedNotePath: string | null,
+    setSelectedNoteId: (id: number | null) => void
+): Promise<void> {
+    // Lazy imports to avoid circular dependency — these modules import from vault.ts
+    const { db, getItemPath, getFullPath } = await import('./db');
 
+    const tree = await readVaultTree();
+    if (!tree) return;
 
-/** Get the current in-memory vault handle (may be null if vault is locked) */
-export function getVaultHandle(): FileSystemDirectoryHandle | null {
-    return _vaultHandle;
+    const existingItems = await db.items.toArray();
+    const existingMap = new Map<string, typeof existingItems[0]>();
+
+    const buildPath = (item: typeof existingItems[0]): string => {
+        const parentPath = getItemPath(item.parentId, existingItems);
+        if (item.type === 'note') {
+            const safeName = item.title.replace(/[<>:"/\\|?*]/g, '_') + '.md';
+            return parentPath ? `${parentPath}/${safeName}` : safeName;
+        }
+        return parentPath ? `${parentPath}/${item.title}` : item.title;
+    };
+
+    existingItems.forEach(item => {
+        if (!item.isDeleted) existingMap.set(buildPath(item), item);
+    });
+
+    const currentVaultPaths = new Set<string>();
+    const folderPathToId = new Map<string, number>();
+    folderPathToId.set('', 0);
+
+    const sortedFolders = [...tree.folders].sort((a, b) => a.path.split('/').length - b.path.split('/').length);
+
+    for (const folder of sortedFolders) {
+        currentVaultPaths.add(folder.path);
+        const parentId = folderPathToId.get(folder.parentPath) ?? 0;
+        const existingFolder = existingMap.get(folder.path);
+
+        if (existingFolder && existingFolder.type === 'folder') {
+            folderPathToId.set(folder.path, existingFolder.id!);
+            if (existingFolder.parentId !== parentId) await db.items.update(existingFolder.id!, { parentId });
+        } else {
+            const id = await db.items.add({ parentId, type: 'folder', title: folder.name, updated_at: Date.now() });
+            folderPathToId.set(folder.path, id as number);
+        }
+    }
+
+    for (const note of tree.notes) {
+        currentVaultPaths.add(note.path);
+        const parentId = folderPathToId.get(note.parentPath) ?? 0;
+        const existingNote = existingMap.get(note.path);
+        let noteId: number;
+
+        if (existingNote && existingNote.type === 'note') {
+            noteId = existingNote.id!;
+            try {
+                const vaultContent = await readNoteContent(note.path);
+                const dexieContent = await db.contents.get(noteId);
+                if (dexieContent?.content !== vaultContent) {
+                    await db.contents.put({ id: noteId, content: vaultContent });
+                    await db.items.update(noteId, { updated_at: note.updatedAt, parentId });
+                } else if (existingNote.parentId !== parentId) {
+                    await db.items.update(noteId, { parentId });
+                }
+            } catch (e) { console.warn('Failed to read vault content for comparison:', note.path, e); }
+        } else {
+            noteId = (await db.items.add({ parentId, type: 'note', title: note.title, updated_at: note.updatedAt })) as number;
+            try { await db.contents.add({ id: noteId, content: await readNoteContent(note.path) }); }
+            catch { await db.contents.add({ id: noteId, content: '' }); }
+        }
+    }
+
+    for (const [path, existingItem] of existingMap.entries()) {
+        if (!currentVaultPaths.has(path) && !existingItem.isDeleted) {
+            await db.items.update(existingItem.id!, { isDeleted: true, updated_at: Date.now() });
+        }
+    }
+
+    try {
+        const allItems = await db.items.toArray();
+        const allContents = await db.contents.toArray();
+        await reconcileVault(allItems, allContents, getItemPath);
+    } catch (e) {
+        console.error('Failed to reconcile vault after load:', e);
+    }
+
+    if (selectedNotePath) {
+        const items = await db.items.toArray();
+        const matchedNode = items.find(item => {
+            if (item.type !== 'note') return false;
+            const parentPathStr = getFullPath(item.id!, items);
+            const fullPathStr = parentPathStr ? `${parentPathStr}/${item.title}` : item.title;
+            return fullPathStr === selectedNotePath;
+        });
+        setSelectedNoteId(matchedNode ? matchedNode.id! : null);
+    }
 }
+
+
+
 
 /** Create a directory recursively in the vault */
 export async function createFolderInVault(folderPath: string): Promise<void> {

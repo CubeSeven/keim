@@ -2,18 +2,24 @@ import { db, addItem, type NoteItem, getItemPath } from './db';
 import { getCloudProvider } from './cloud/ProviderManager';
 import { DropboxProvider } from './cloud/DropboxProvider';
 import { writeNoteToVault, deleteFromVault, getStorageMode, notePathFromTitle } from './vault';
+import { useAppStore } from '../store';
+import { encryptTextToBuffer, decryptTextFromBuffer } from './crypto';
+import { KEYS } from '../lib/constants';
+import { purgeTombstones, buildRemotePathMap, buildDiffLists, type SyncManifest, type SyncManifestItem } from './sync-logic';
+
+// Only log verbose sync details in development builds
+const DEBUG = import.meta.env.DEV;
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
-let lastSyncTime: number | null = Number(localStorage.getItem('keim_last_sync')) || null;
+let lastSyncTime: number | null = Number(localStorage.getItem(KEYS.LAST_SYNC)) || null;
 
 // When vault is locked (permission revoked on Android), we must NOT sync —
 // the local Dexie cache may be stale and uploading it would overwrite newer
-// cloud / disk data. Set this to true while isVaultLocked === true in App.tsx.
+// cloud / disk data. isVaultLocked is managed via useAppStore and synced here.
 let _vaultIsLocked = false;
-export function setVaultLocked(locked: boolean) { _vaultIsLocked = locked; }
 
 // Cross-tab synchronization
 const syncChannel = new BroadcastChannel('keim_sync');
@@ -65,33 +71,71 @@ export async function loginToDropbox() {
 
 export function disconnectDropbox() {
     getCloudProvider().disconnect();
-    // Reset our local sync engine state
-    lastSyncTime = null;
+    resetLocalSyncState();
     lastAuthCheck = 0;
-    localStorage.removeItem('keim_last_sync');
+    
+    // Security: Purge encryption keys from memory and disk on disconnect
+    localStorage.removeItem('keim_active_dek');
+    useAppStore.getState().setActiveDEK(null);
+}
+
+export function resetLocalSyncState() {
+    lastSyncTime = null;
+    localStorage.removeItem(KEYS.LAST_SYNC);
+}
+
+// ---------------------------------------------------------------------------
+// E2EE Transport Helpers
+// ---------------------------------------------------------------------------
+
+async function secureUpload(path: string, contentStr: string, dek: CryptoKey | null) {
+    if (dek) {
+        const { ciphertext, iv } = await encryptTextToBuffer(contentStr, dek);
+        const combined = new Uint8Array(iv.length + ciphertext.byteLength);
+        combined.set(iv, 0);
+        combined.set(new Uint8Array(ciphertext), iv.length);
+        const baseName = path.endsWith('.json') ? path.slice(0, -5) : path;
+        DEBUG && console.log(`🔒 [E2EE] Encrypting and uploading ${baseName}.enc instead of ${path}`);
+        await getCloudProvider().uploadFile(`${baseName}.enc`, new Blob([combined]));
+    } else {
+        DEBUG && console.log(`🌐 [Plaintext] Uploading unencrypted ${path}`);
+        await getCloudProvider().uploadFile(path, contentStr);
+    }
+}
+
+async function secureDownload(path: string, dek: CryptoKey | null): Promise<string | null> {
+    const baseName = path.endsWith('.json') ? path.slice(0, -5) : path;
+    
+    // If encrypted vault, try .enc first
+    if (dek) {
+        const encBlob = await getCloudProvider().downloadFile(`${baseName}.enc`);
+        if (encBlob) {
+             console.log(`🔓 [E2EE] Downloaded ${baseName}.enc - Decrypting payload to memory...`);
+             const buffer = await encBlob.arrayBuffer();
+             if (buffer.byteLength > 12) {
+                 const iv = new Uint8Array(buffer, 0, 12);
+                 const ciphertext = buffer.slice(12);
+                 try {
+                     return await decryptTextFromBuffer(ciphertext, iv, dek);
+                 } catch (e) {
+                     console.error('Decryption failed for', path, e);
+                 }
+             }
+        }
+    }
+    
+    // Fallback to .json
+    const blob = await getCloudProvider().downloadFile(path);
+    if (blob) {
+         console.log(`🌐 [Plaintext] Downloaded unencrypted ${path}`);
+         return await blob.text();
+    }
+    return null;
 }
 
 // ---------------------------------------------------------------------------
 // V2 Granular Sync
 // ---------------------------------------------------------------------------
-
-interface SyncManifestItem {
-    updated_at: number;
-    isDeleted: boolean;
-    deletedAt?: number;  // When the item was deleted — used for 30-day tombstone purge
-    title?: string;      // Added for path-based dedup on fresh devices
-    parentPath?: string; // Added for path-based dedup on fresh devices
-}
-
-interface SyncManifest {
-    lastUpdated: number;
-    items: {
-        [id: number]: SyncManifestItem;
-    }
-}
-
-// How long to retain tombstones before purging (30 days in ms)
-const TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Cache auth verification — no need to call usersGetCurrentAccount every sync
 let lastAuthCheck = 0;
@@ -115,7 +159,7 @@ export async function syncNotesWithDrive(background = false) {
     if (typeof navigator !== 'undefined' && 'locks' in navigator) {
         if (background) {
             return navigator.locks.request('keim_sync_leader', { ifAvailable: true }, async (lock) => {
-                if (!lock) { console.log('Sync skipped: another tab is syncing.'); return; }
+                if (!lock) { DEBUG && console.log('Sync skipped: another tab is syncing.'); return; }
                 return _runSync(background);
             });
         }
@@ -154,21 +198,45 @@ async function _runSync(background = false) {
     const storageMode = getStorageMode();
 
     try {
-        console.log('Starting Dropbox Sync...');
+        DEBUG && console.log('Starting Dropbox Sync...');
         broadcastSyncStatus('syncing');
 
         // Ensure the keim folder exists (silent on conflict)
         await getCloudProvider().ensureAppFolder();
+        
+        const provider = getCloudProvider();
+        if (typeof provider.checkVaultState === 'function') {
+            const vaultState = await provider.checkVaultState();
+            const { activeDEK, isE2EESkipped, setE2eeModalState } = useAppStore.getState();
+
+            // If empty and not skipped, prompt for setup
+            if (vaultState === 'EMPTY' && !isE2EESkipped && !activeDEK) {
+                    DEBUG && console.log('Sync paused: Fresh vault, asking for E2EE setup.');
+                 setE2eeModalState({ isOpen: true, mode: 'setup' });
+                 broadcastSyncStatus('idle');
+                 return;
+            }
+
+            // If locked and no DEK, prompt for password
+            if (vaultState === 'LOCKED' && !activeDEK) {
+                 DEBUG && console.log('Sync paused: Vault is E2EE locked. Asking for password.');
+                 setE2eeModalState({ isOpen: true, mode: 'unlock' });
+                 broadcastSyncStatus('idle');
+                 return;
+            }
+        }
+
+        const dek = useAppStore.getState().activeDEK;
 
         // --- MANIFEST DOWNLOAD + INTEGRITY CHECK ---
         // Validate the manifest structure before trusting it. If it's
         // corrupt (partial write, truncation, etc.), start fresh so we
         // don't make wrong sync decisions based on garbage timestamps.
         let remoteManifest: SyncManifest = { lastUpdated: 0, items: {} };
-        const manifestBlob = await getCloudProvider().downloadFile('/manifest.json');
-        if (manifestBlob) {
+        const manifestText = await secureDownload('/manifest.json', dek);
+        if (manifestText) {
             try {
-                const parsed = JSON.parse(await manifestBlob.text());
+                const parsed = JSON.parse(manifestText);
                 // Integrity gate: must have a numeric lastUpdated and an items object
                 if (
                     parsed &&
@@ -188,21 +256,8 @@ async function _runSync(background = false) {
         }
 
         // --- TOMBSTONE PURGE ---
-        // Remove tombstones older than 30 days. By now every online device
-        // will have seen the deletion (it was uploaded 30+ days ago).
-        // This prevents manifest.json from growing indefinitely.
-        const now = Date.now();
-        let manifestPruned = false;
-        for (const [idStr, meta] of Object.entries(remoteManifest.items)) {
-            if (meta.isDeleted) {
-                const deletedAt = meta.deletedAt ?? meta.updated_at; // fallback for old tombstones
-                if (now - deletedAt > TOMBSTONE_TTL_MS) {
-                    delete remoteManifest.items[Number(idStr)];
-                    manifestPruned = true;
-                    console.log(`Sync: purged stale tombstone for id ${idStr} (deleted ${Math.floor((now - deletedAt) / 86_400_000)} days ago).`);
-                }
-            }
-        }
+        // Remove tombstones older than 30 days.
+        const { pruned: manifestPruned } = purgeTombstones(remoteManifest);
 
         let localItems = await db.items.toArray();
         const localMap = new Map<number, NoteItem>();
@@ -210,22 +265,12 @@ async function _runSync(background = false) {
 
         // -----------------------------------------------------------------
         // FIRST-SYNC DEDUP & RECONCILIATION
-        // On a fresh device, vault-imported notes have different IDs 
-        // than the cloud notes. We must reconcile them by PATH.
         // -----------------------------------------------------------------
         const dedupedIds = new Set<number>();
         const collisionsToReassign: NoteItem[] = [];
 
         // ALWAYS build a path→remoteId map from manifest metadata for all syncs.
-        // This stops resurrected ghost files (which get new local IDs) from
-        // overwriting cloud files simply because their OS timestamp appears newer.
-        const remotePathMap = new Map<string, number>();
-        for (const [idStr, meta] of Object.entries(remoteManifest.items)) {
-            if (meta.title && !meta.isDeleted) {
-                const fp = meta.parentPath ? `${meta.parentPath}/${meta.title}` : meta.title;
-                remotePathMap.set(fp, Number(idStr));
-            }
-        }
+        const remotePathMap = buildRemotePathMap(remoteManifest);
 
         if (!lastSyncTime) {
             if (remotePathMap.size > 0) {
@@ -242,13 +287,13 @@ async function _runSync(background = false) {
                         if (localItem.id === undefined) continue;
                         console.log(`Dedup: Automatically overwriting local "${localItem.title}" with cloud version.`);
 
-                        if (storageMode === 'vault' && localItem.type === 'note') {
+                        if (storageMode === 'vault') {
                             try {
                                 const parentPath = getItemPath(localItem.parentId, localItems);
-                                const path = notePathFromTitle(localItem.title, parentPath);
+                                const path = localItem.type === 'note' ? notePathFromTitle(localItem.title, parentPath) : (parentPath ? `${parentPath}/${localItem.title}` : localItem.title);
                                 await deleteFromVault(path);
                             } catch (e) {
-                                console.error('Failed to delete overwritten note from vault', e);
+                                console.error('Failed to delete overwritten item from vault', e);
                             }
                         }
 
@@ -263,15 +308,11 @@ async function _runSync(background = false) {
             }
 
             // --- ID COLLISION SAFETY (First Sync Only) ---
-            // If a local item has an ID that exists in the cloud, but the PATHS don't match,
-            // we MUST re-assign the local ID. Otherwise, we might upload this note
-            // over a completely unrelated cloud note just because of an ID collision.
             for (const localItem of localItems) {
                 if (localItem.id === undefined || localItem.isDeleted || dedupedIds.has(localItem.id)) continue;
 
                 const remoteMeta = remoteManifest.items[localItem.id];
                 if (remoteMeta) {
-                    // It's an ID collision. Check if it's the SAME note by path.
                     const parentPath = getItemPath(localItem.parentId, localItems);
                     const localPath = parentPath ? `${parentPath}/${localItem.title}` : localItem.title;
                     const remotePath = remoteMeta.parentPath ? `${remoteMeta.parentPath}/${remoteMeta.title}` : remoteMeta.title;
@@ -312,8 +353,6 @@ async function _runSync(background = false) {
             }
 
             // --- ORPHAN FILE HANDLING (First Sync Only) ---
-            // If there are local files that don't exist in the cloud at all,
-            // they might be "ghosts" from an old vault. Ask user to decide.
             const localOnlyItems = localItems.filter(li => {
                 if (li.id === undefined || li.isDeleted || dedupedIds.has(li.id)) return false;
                 const parentPath = getItemPath(li.parentId, localItems);
@@ -322,18 +361,16 @@ async function _runSync(background = false) {
             });
 
             if (localOnlyItems.length > 0) {
-                // Silently discard local orphans on first sync. 
-                // We no longer ask since the cloud is the absolute truth.
                 for (const item of localOnlyItems) {
                     console.log(`Sync: Silently discarding orphan local file "${item.title}"`);
 
-                    if (storageMode === 'vault' && item.type === 'note') {
+                    if (storageMode === 'vault') {
                         try {
                             const parentPath = getItemPath(item.parentId, localItems);
-                            const path = notePathFromTitle(item.title, parentPath);
+                            const path = item.type === 'note' ? notePathFromTitle(item.title, parentPath) : (parentPath ? `${parentPath}/${item.title}` : item.title);
                             await deleteFromVault(path);
                         } catch (e) {
-                            console.error('Failed to delete orphan note from vault', e);
+                            console.error('Failed to delete orphan item from vault', e);
                         }
                     }
 
@@ -342,7 +379,6 @@ async function _runSync(background = false) {
                     await db.smartSchemas.where({ folderId: item.id! }).delete();
                     dedupedIds.add(item.id!);
                 }
-                // Final refresh
                 localItems = await db.items.toArray();
             }
 
@@ -350,70 +386,27 @@ async function _runSync(background = false) {
             localItems.forEach(item => { if (item.id !== undefined) localMap.set(item.id, item); });
         }
 
-        const toDownload: number[] = [];
-        const toUpload: NoteItem[] = [];
+        const { toDownload, toUpload, ghostsToDestroy } = buildDiffLists(
+            remoteManifest,
+            localItems,
+            localMap,
+            dedupedIds,
+            remotePathMap,
+            lastSyncTime,
+            getItemPath
+        );
 
-        // Diff: remote → local
-        for (const [idStr, remoteMeta] of Object.entries(remoteManifest.items)) {
-            const id = Number(idStr);
-            if (isNaN(id)) continue;
-            const localItem = localMap.get(id);
-
-            // Remote file has an update
-            if (!localItem || (localItem.updated_at !== undefined && remoteMeta.updated_at > localItem.updated_at)) {
-
-                // --- UPDATE vs UPDATE CONFLICT ---
-                // If local file was ALSO updated since the last sync, we have a conflict!
-                if (localItem && lastSyncTime && localItem.updated_at > lastSyncTime && !remoteMeta.isDeleted) {
-                    // Strict Cloud Truth: we DO NOT create a "Local Conflict" file.
-                    // We let the cloud version seamlessly overwrite the local edits.
-                    console.warn(`Conflict detected for note "${localItem.title}". Cloud version strictly wins.`);
-                }
-
-                if (!remoteMeta.isDeleted || localItem) toDownload.push(id);
+        // Process path collision ghosts returned by buildDiffLists (Strict Cloud Wins)
+        if (ghostsToDestroy.length > 0) {
+            for (const ghostId of ghostsToDestroy) {
+                await db.items.delete(ghostId);
+                await db.contents.delete(ghostId);
+                await db.smartSchemas.where({ folderId: ghostId }).delete();
+                dedupedIds.add(ghostId);
             }
         }
 
-        // Diff: local → remote
-        for (const localItem of localItems) {
-            if (localItem.id === undefined) continue;
-            if (dedupedIds.has(localItem.id)) continue; // Already removed as a vault duplicate
-            const remoteMeta = remoteManifest.items[localItem.id];
-
-            // 1. Existing file check (has remoteMeta) OR local is decidedly newer
-            if (!remoteMeta || localItem.updated_at > remoteMeta.updated_at) {
-                // Skip re-uploading a tombstone that is already recorded as deleted in the remote.
-                if (localItem.isDeleted && remoteMeta?.isDeleted) continue;
-
-                // 2. GHOST DESTRUCTION / STRICT CLOUD WINS
-                // If this is a seemingly "new" local item (no remote collision by ID),
-                // we MUST check if it collides by PATH. If our local file system resurrected
-                // an old file (e.g. Android scoped storage deletion bug), it will hit this block
-                // with a new ID and a fresh OS timestamp. We kill it here.
-                if (!remoteMeta && !localItem.isDeleted) {
-                    const parentPath = getItemPath(localItem.parentId, localItems);
-                    const fullPath = parentPath ? `${parentPath}/${localItem.title}` : localItem.title;
-                    if (remotePathMap.has(fullPath)) {
-                        console.warn(`Sync: Destroying path collision ghost "${fullPath}" (Local ID: ${localItem.id}). Cloud version strictly wins.`);
-                        // Only delete from DB here. the toDownload pass below will pull the remote version 
-                        // and correctly overwrite the physical file with the cloud content.
-                        await db.items.delete(localItem.id);
-                        await db.contents.delete(localItem.id);
-                        await db.smartSchemas.where({ folderId: localItem.id }).delete();
-                        dedupedIds.add(localItem.id);
-                        // Prevent it from being uploaded
-                        continue;
-                    }
-                }
-
-                // Prevent duplicate uploads if we just added it to toUpload during the conflict resolution
-                if (!toUpload.find(item => item.id === localItem.id)) {
-                    toUpload.push(localItem);
-                }
-            }
-        }
-
-        console.log(`Sync: ${toDownload.length} to download, ${toUpload.length} to upload.`);
+        DEBUG && console.log(`Sync: ${toDownload.length} to download, ${toUpload.length} to upload.`);
 
         // Downloads - Parallelised with concurrency limit to prevent half-synced
         // state on partial failure while still being fast on mobile.
@@ -430,14 +423,14 @@ async function _runSync(background = false) {
                     if (storageMode === 'vault') {
                         try {
                             const parentPath = getItemPath(existingLocal.parentId, localItems);
-                            const path = notePathFromTitle(existingLocal.title, parentPath);
+                            const path = existingLocal.type === 'note' ? notePathFromTitle(existingLocal.title, parentPath) : (parentPath ? `${parentPath}/${existingLocal.title}` : existingLocal.title);
                             await deleteFromVault(path);
                         } catch { /* best‑effort */ }
                     }
                 } else if (!isRemoteDeleted) {
-                    const itemBlob = await getCloudProvider().downloadFile(`/items/${id}.json`);
-                    if (itemBlob) {
-                        const item = JSON.parse(await itemBlob.text());
+                    const itemText = await secureDownload(`/items/${id}.json`, dek);
+                    if (itemText) {
+                        const item = JSON.parse(itemText);
 
                         // --- VALIDATION: never overwrite with corrupt data ---
                         if (!item || typeof item.id !== 'number' || !item.title || !item.type) {
@@ -448,9 +441,9 @@ async function _runSync(background = false) {
                         await db.items.put(item);
                         if (item.type === 'note' && !item.isDeleted) {
                             // Download item + content in parallel
-                            const contentBlob = await getCloudProvider().downloadFile(`/contents/${id}.json`);
-                            if (contentBlob) {
-                                const contentData = JSON.parse(await contentBlob.text());
+                            const contentText = await secureDownload(`/contents/${id}.json`, dek);
+                            if (contentText) {
+                                const contentData = JSON.parse(contentText);
 
                                 // Validate content data
                                 if (!contentData || typeof contentData.id !== 'number') {
@@ -489,11 +482,11 @@ async function _runSync(background = false) {
         // Uploads - Parallelised with concurrency limit.
         // Each note has 2 files (item + content), so we batch them as one task.
         const uploadTasks = toUpload.map(item => async () => {
-            await getCloudProvider().uploadFile(`/items/${item.id}.json`, JSON.stringify(item));
+            await secureUpload(`/items/${item.id}.json`, JSON.stringify(item), dek);
             if (item.type === 'note' && !item.isDeleted) {
                 const content = await db.contents.get(item.id!);
                 if (content) {
-                    await getCloudProvider().uploadFile(`/contents/${item.id}.json`, JSON.stringify(content));
+                    await secureUpload(`/contents/${item.id}.json`, JSON.stringify(content), dek);
                 }
             }
             const manifestEntry: SyncManifestItem = {
@@ -517,15 +510,15 @@ async function _runSync(background = false) {
 
         if (toUpload.length > 0 || toDownload.length > 0 || manifestPruned) {
             remoteManifest.lastUpdated = Date.now();
-            await getCloudProvider().uploadFile('/manifest.json', JSON.stringify(remoteManifest));
+            await secureUpload('/manifest.json', JSON.stringify(remoteManifest), dek);
         }
 
         // --- SMART SCHEMAS SYNC ---
-        const schemasBlob = await getCloudProvider().downloadFile('/schemas.json');
+        const schemasText = await secureDownload('/schemas.json', dek);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let remoteSchemas: Record<number, any[]> = {};
-        if (schemasBlob) {
-            try { remoteSchemas = JSON.parse(await schemasBlob.text()); } catch { /* ignore */ }
+        if (schemasText) {
+            try { remoteSchemas = JSON.parse(schemasText); } catch { /* ignore */ }
         }
         
         let schemasModified = false;
@@ -576,7 +569,7 @@ async function _runSync(background = false) {
         }
 
         if (schemasModified || !lastSyncTime) { 
-             await getCloudProvider().uploadFile('/schemas.json', JSON.stringify(remoteSchemas));
+             await secureUpload('/schemas.json', JSON.stringify(remoteSchemas), dek);
         }
 
         // --- PHYSICAL VAULT RECONCILIATION ---
@@ -602,8 +595,8 @@ async function _runSync(background = false) {
         }
 
         lastSyncTime = Date.now();
-        localStorage.setItem('keim_last_sync', lastSyncTime.toString());
-        console.log('Dropbox Sync complete!');
+        localStorage.setItem(KEYS.LAST_SYNC, lastSyncTime.toString());
+        DEBUG && console.log('Dropbox Sync complete!');
         broadcastSyncStatus('synced');
         
         // Notify other tabs to refresh their UI

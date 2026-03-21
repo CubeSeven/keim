@@ -7,14 +7,14 @@ This document categorizes planned features by implementation effort and complexi
 ## 🚀 Quick Wins (Low Effort, High Impact)
 *These items have low code complexity and can be implemented quickly to improve the daily UX.*
 
-*   **Gallery View Refinements**: Minor styling updates to the glassmorphic cards.
+*   **[Completed] Gallery View Refinements**: Minor styling updates to the glassmorphic cards.
 
 ---
 
 ## 🛠 Mid-Range Features (Moderate Effort)
 *These require more logic or UI work but are still relatively straightforward.*
 
-*   **Pomodoro Timer**: Integrated productivity timer with system notification support.
+*   **Task-Based Pomodoro Timer**: Future integration for notes/tasks to have dedicated timers, time-tracking properties, and system notifications.
 *   **App Notifications**: System-level alerts for sync events or timers.
 *   **Folder Duplication**: Recursive logic to clone entire folder structures in the DB and Vault.
 *   **Timeline View**: Horizontal mapping for folders with Start/End date fields.
@@ -35,6 +35,7 @@ This document categorizes planned features by implementation effort and complexi
 ---
 
 ## ✅ Completed Recently
+*   **Gallery View Refinements**: Premium glassmorphic styling applied to gallery cards.
 *   **Popular App Integrations**: Inline chips and icons for links from YouTube, Twitter, GitHub, Google Docs, Maps, etc.
 *   **Single Note Duplication**: A "Duplicate" button in the context menu for notes.
 *   **Beautified Links**: Enhanced rendering for internal and external links (CSS/UI tweaks).

@@ -7,10 +7,6 @@ import { DropboxProvider } from './DropboxProvider';
 
 let activeProvider: CloudProvider = new DropboxProvider();
 
-export function setCloudProvider(provider: CloudProvider) {
-    activeProvider = provider;
-}
-
 export function getCloudProvider(): CloudProvider {
     return activeProvider;
 }

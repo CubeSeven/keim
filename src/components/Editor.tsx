@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getFullPath, getItemPath } from '../lib/db';
 import { triggerAutoSync } from '../lib/sync';
@@ -10,7 +10,7 @@ import PropertiesHeader from './PropertiesHeader';
 
 import { Milkdown, MilkdownProvider, useEditor, useInstance } from '@milkdown/react';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
-import EmojiPicker from 'emoji-picker-react';
+const EmojiPicker = lazy(() => import('emoji-picker-react'));
 import { SmilePlus, X, Tag, Plus, Lock, ArrowRight, CloudDownload, Cloud } from 'lucide-react';
 import { mirage } from 'ldrs';
 mirage.register();
@@ -848,7 +848,9 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
                             </button>
                             {showIconPicker && (
                                 <div className="absolute z-50 top-full left-0 mt-2 shadow-xl rounded-lg border border-light-border dark:border-dark-border overflow-hidden">
-                                    <EmojiPicker onEmojiClick={(e) => handleIconChange(e.emoji)} />
+                                    <Suspense fallback={<div className="p-4 w-64 text-center text-sm opacity-50">Loading emojis...</div>}>
+                                        <EmojiPicker onEmojiClick={(e) => handleIconChange(e.emoji)} />
+                                    </Suspense>
                                 </div>
                             )}
                         </div>
@@ -867,7 +869,9 @@ export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectN
                                 </button>
                                 {showIconPicker && (
                                     <div className="absolute z-50 top-full left-0 mt-2 shadow-xl rounded-lg border border-light-border dark:border-dark-border overflow-hidden">
-                                        <EmojiPicker onEmojiClick={(e) => handleIconChange(e.emoji)} />
+                                        <Suspense fallback={<div className="p-4 w-64 text-center text-sm opacity-50">Loading emojis...</div>}>
+                                            <EmojiPicker onEmojiClick={(e) => handleIconChange(e.emoji)} />
+                                        </Suspense>
                                     </div>
                                 )}
                             </div>

@@ -1,4 +1,4 @@
-import { X, Moon, Sun, Monitor, CheckCircle2, AlertCircle, Download, Upload, Info, HardDrive, Database, Settings2, Palette, RefreshCw, Command } from 'lucide-react';
+import { X, Moon, Sun, Monitor, CheckCircle2, AlertCircle, Download, Upload, Info, HardDrive, Database, Settings2, Palette, RefreshCw, Command, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { syncNotesWithDrive, isDriveConnected, getLastSyncTime, authorizeDropbox, loginToDropbox, disconnectDropbox } from '../lib/sync';
 import { exportToFolder, importMarkdownFiles } from '../lib/export-import';
 import { APP_VERSION } from '../constants';
@@ -63,7 +63,10 @@ interface SettingsModalProps {
     storageMode?: 'vault' | 'indexeddb' | 'unset';
 }
 
+import { useAppStore } from '../store';
+
 export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChangeVault, onSwitchToBrowserStorage, onSyncStatusChange, onInstallPWA, initialTab = 'general', storageMode }: SettingsModalProps) {
+    const { activeDEK, setE2eeModalState } = useAppStore();
     const [syncing, setSyncing] = useState(false);
     const [connected, setConnected] = useState(false);
     const [lastSync, setLastSync] = useState<number | null>(null);
@@ -532,6 +535,50 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                 <button disabled className="w-full py-2.5 rounded-md text-sm font-semibold bg-light-ui dark:bg-dark-ui text-dark-bg/50 dark:text-light-bg/50 cursor-not-allowed">
                                                     Not Available
                                                 </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Security & Encryption Section */}
+                                        <div className="border border-light-ui dark:border-dark-ui rounded-lg overflow-hidden shadow-sm mt-8">
+                                            <div className="p-4 bg-light-ui/30 dark:bg-dark-ui/30 flex items-center justify-between border-b border-light-ui dark:border-dark-ui">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${activeDEK ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'}`}>
+                                                        {activeDEK ? <ShieldCheck size={24} /> : <ShieldAlert size={24} />}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-semibold text-sm">End-to-End Encryption</p>
+                                                        {activeDEK ? (
+                                                            <p className="text-xs text-emerald-600 dark:text-emerald-500 font-medium flex items-center gap-1 mt-0.5">
+                                                                <CheckCircle2 size={14} /> Active & Secured
+                                                            </p>
+                                                        ) : (
+                                                            <p className="text-xs opacity-60 mt-0.5">Not Protected</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="p-4 bg-light-bg dark:bg-dark-bg">
+                                                <p className="text-sm opacity-80 mb-3">
+                                                    {activeDEK 
+                                                        ? 'Your vault is shielded by military-grade AES-256 encryption. Only you hold the keys to read your data.'
+                                                        : 'Secure your vault notes before they leave your device. Your cloud provider will never be able to read your files.'}
+                                                </p>
+                                                {!activeDEK && connected && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setE2eeModalState({ isOpen: true, mode: 'setup' });
+                                                            onClose();
+                                                        }}
+                                                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-semibold bg-indigo-500 text-white hover:bg-indigo-600 shadow-sm transition-all"
+                                                    >
+                                                        <ShieldAlert size={18} /> Enable Encryption Now
+                                                    </button>
+                                                )}
+                                                {!activeDEK && !connected && (
+                                                    <button disabled className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-semibold bg-light-ui dark:bg-dark-ui text-dark-bg/50 dark:text-light-bg/50 cursor-not-allowed">
+                                                        Connect to a Cloud Provider First
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
 

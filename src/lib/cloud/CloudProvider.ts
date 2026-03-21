@@ -61,4 +61,9 @@ export interface CloudProvider {
      * @param path Relative path
      */
     deleteFile(path: string): Promise<void>;
+    
+    /**
+     * Check if the vault has been encrypted
+     */
+    checkVaultState?(): Promise<'EMPTY' | 'UNENCRYPTED' | 'LOCKED' | 'UNLOCKED'>;
 }

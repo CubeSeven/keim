@@ -135,6 +135,26 @@ export class DropboxProvider implements CloudProvider {
         this.folderChecked = true;
     }
 
+    async checkVaultState(): Promise<'EMPTY' | 'UNENCRYPTED' | 'LOCKED' | 'UNLOCKED'> {
+        if (!this.dbx) return 'EMPTY';
+        try {
+            const response = await this.dbx.filesListFolder({ path: APP_ROOT });
+            const entries = response.result.entries;
+            if (entries.length === 0) return 'EMPTY';
+            const hasKeys = entries.some(e => e.name === '.keim_keys');
+            if (hasKeys) return 'LOCKED';
+            return 'UNENCRYPTED';
+        } catch (e) {
+            const error = e as { status?: number; error?: { error_summary?: string } };
+            const status = error?.status;
+            const summary = error?.error?.error_summary || '';
+            if (status === 409 || summary.includes('path/not_found')) {
+                return 'EMPTY';
+            }
+            throw e;
+        }
+    }
+
     async downloadFile(relativePath: string, retryCount = 0): Promise<Blob | null> {
         if (!this.dbx) return null;
         // ensure leading slash
@@ -155,9 +175,17 @@ export class DropboxProvider implements CloudProvider {
             if (status === 409 || status === 404 || summary.includes('path/not_found')) {
                 return null;
             }
-            if (status === 429 && retryCount < 3) {
-                const retryAfter = error?.response?.headers?.get('retry-after') || 2;
-                await new Promise(r => setTimeout(r, Number(retryAfter) * 1000));
+            if (status === 429 && retryCount < 7) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const sdkError = e as any;
+                const bodyRetry = sdkError?.error?.error?.retry_after ?? sdkError?.error?.retry_after;
+                const headerRetry = error?.response?.headers?.get?.('retry-after') || sdkError?.headers?.get?.('retry-after');
+                
+                const retryAfterSec = bodyRetry || headerRetry;
+                const delayMs = retryAfterSec ? Number(retryAfterSec) * 1000 : Math.pow(2, retryCount + 1) * 1000;
+                
+                console.warn(`[Dropbox] 429 Rate Limit hit. Sleeping for ${delayMs}ms (Attempt ${retryCount+1}/7)...`);
+                await new Promise(r => setTimeout(r, delayMs + (Math.random() * 1000))); 
                 return this.downloadFile(relativePath, retryCount + 1);
             }
             throw error;
@@ -183,27 +211,48 @@ export class DropboxProvider implements CloudProvider {
                 return this.uploadFile(relativePath, content, retryCount + 1);
             }
             const status = error?.status || error?.response?.status;
-            if (status === 429 && retryCount < 3) {
-                const retryAfter = error?.response?.headers?.get('retry-after') || 2;
-                await new Promise(r => setTimeout(r, Number(retryAfter) * 1000));
+            if (status === 429 && retryCount < 7) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const sdkError = e as any;
+                const bodyRetry = sdkError?.error?.error?.retry_after ?? sdkError?.error?.retry_after;
+                const headerRetry = error?.response?.headers?.get?.('retry-after') || sdkError?.headers?.get?.('retry-after');
+                
+                const retryAfterSec = bodyRetry || headerRetry;
+                const delayMs = retryAfterSec ? Number(retryAfterSec) * 1000 : Math.pow(2, retryCount + 1) * 1000;
+                
+                console.warn(`[Dropbox] 429 Rate Limit hit. Sleeping for ${delayMs}ms (Attempt ${retryCount+1}/7)...`);
+                await new Promise(r => setTimeout(r, delayMs + (Math.random() * 1000))); 
                 return this.uploadFile(relativePath, content, retryCount + 1);
             }
             throw error;
         }
     }
 
-    async deleteFile(relativePath: string): Promise<void> {
+    async deleteFile(relativePath: string, retryCount = 0): Promise<void> {
         if (!this.dbx) return;
         const normalizedPath = relativePath.startsWith('/') ? relativePath : '/' + relativePath;
         const fullPath = `${APP_ROOT}${normalizedPath}`;
         try {
             await this.dbx.filesDeleteV2({ path: fullPath });
         } catch (e) {
-            const error = e as { status?: number; response?: { status?: number }; error?: { error_summary?: string } };
+            const error = e as { status?: number; response?: { status?: number; headers?: { get: (h: string) => string | null } }; error?: { error_summary?: string } };
             const status = error?.status || error?.response?.status;
             const summary = error?.error?.error_summary || '';
             if (status === 404 || summary.includes('path/not_found')) {
                 return; // Already deleted
+            }
+            if (status === 429 && retryCount < 7) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const sdkError = e as any;
+                const bodyRetry = sdkError?.error?.error?.retry_after ?? sdkError?.error?.retry_after;
+                const headerRetry = error?.response?.headers?.get?.('retry-after') || sdkError?.headers?.get?.('retry-after');
+                
+                const retryAfterSec = bodyRetry || headerRetry;
+                const delayMs = retryAfterSec ? Number(retryAfterSec) * 1000 : Math.pow(2, retryCount + 1) * 1000;
+                
+                console.warn(`[Dropbox] 429 Rate Limit hit. Sleeping for ${delayMs}ms (Attempt ${retryCount+1}/7)...`);
+                await new Promise(r => setTimeout(r, delayMs + (Math.random() * 1000))); 
+                return this.deleteFile(relativePath, retryCount + 1);
             }
             throw error;
         }

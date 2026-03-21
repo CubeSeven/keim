@@ -2,13 +2,13 @@ import { $nodeSchema, $remark } from '@milkdown/kit/utils';
 import { visit } from 'unist-util-visit';
 import type { Node, Parent } from 'unist';
 
-export interface AppLinkInfo {
+interface AppLinkInfo {
     platform: 'YouTube' | 'Twitter' | 'GitHub' | 'GoogleDocs' | 'GoogleMaps' | 'Vimeo' | 'Twitch' | 'SoundCloud' | 'Spotify' | 'Instagram' | 'TikTok' | 'CodePen' | 'Unknown';
     url: string;
     isEmbeddable: boolean;
 }
 
-export function parseAppUrl(url: string): AppLinkInfo {
+function parseAppUrl(url: string): AppLinkInfo {
     if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/.test(url)) {
         return { platform: 'YouTube', url, isEmbeddable: true };
     }

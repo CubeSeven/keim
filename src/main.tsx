@@ -3,6 +3,11 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+import { seedDatabase } from './lib/seed'
+
+// @ts-ignore
+window.seedDatabase = seedDatabase
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

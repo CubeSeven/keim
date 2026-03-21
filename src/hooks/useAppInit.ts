@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { db, getFullPath, getItemPath } from '../lib/db';
-import { readVaultTree, getStorageMode, setStorageMode, openVaultPicker, restoreVaultHandle, readNoteContent, hasSavedVault } from '../lib/vault';
+import { db } from '../lib/db';
+import { getStorageMode, setStorageMode, openVaultPicker, restoreVaultHandle, hasSavedVault, loadVaultIntoDb } from '../lib/vault';
 import { initSync, disconnectDropbox, authorizeDropbox, syncNotesWithDrive, isDriveConnected } from '../lib/sync';
 import { buildSearchIndex } from '../lib/search';
 import { useAppStore } from '../store';
 import type { SyncStatus } from '../App';
-
-export type AppState = 'loading' | 'welcome' | 'restore-vault' | 'needs-vault-permission' | 'ready';
+import type { AppStateStatus } from '../store';
+import { KEYS } from '../lib/constants';
 
 export function useAppInit() {
     const { 
@@ -15,9 +15,10 @@ export function useAppInit() {
         setIsVaultLocked, setSyncStatus, setLastSyncTime 
     } = useAppStore();
 
-    const [appState, setAppState] = useState<AppState>('loading');
+    const [appState, setAppState] = useState<AppStateStatus>('loading');
     const [isPickingVault, setIsPickingVault] = useState(false);
     const [installPrompt, setInstallPrompt] = useState<{ prompt: () => void, userChoice: Promise<{ outcome: string }> } | null>(null);
+    const [confirmMergeState, setConfirmMergeState] = useState<{ isOpen: boolean; resolve: ((v: boolean) => void) | null }>({ isOpen: false, resolve: null });
     
     const selectedNotePathRef = useRef<string | null>(selectedNotePath);
     useEffect(() => { selectedNotePathRef.current = selectedNotePath; }, [selectedNotePath]);
@@ -41,119 +42,28 @@ export function useAppInit() {
     };
 
     // --- Vault Loading Logic ---
-    const loadVaultIntoDb = useCallback(async () => {
-        const tree = await readVaultTree();
-        if (!tree) return;
-
-        const existingItems = await db.items.toArray();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const existingMap = new Map<string, any>(); 
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const buildPath = (item: any): string => {
-            const parentPath = getItemPath(item.parentId, existingItems);
-            if (item.type === 'note') {
-                const safeName = item.title.replace(/[<>:"/\\|?*]/g, '_') + '.md';
-                return parentPath ? `${parentPath}/${safeName}` : safeName;
-            }
-            return parentPath ? `${parentPath}/${item.title}` : item.title;
-        };
-
-        existingItems.forEach(item => {
-            if (!item.isDeleted) existingMap.set(buildPath(item), item);
-        });
-
-        const currentVaultPaths = new Set<string>();
-        const folderPathToId = new Map<string, number>();
-        folderPathToId.set('', 0); 
-
-        const sortedFolders = [...tree.folders].sort((a, b) => a.path.split('/').length - b.path.split('/').length);
-
-        for (const folder of sortedFolders) {
-            currentVaultPaths.add(folder.path);
-            const parentId = folderPathToId.get(folder.parentPath) ?? 0;
-            const existingFolder = existingMap.get(folder.path);
-
-            if (existingFolder && existingFolder.type === 'folder') {
-                folderPathToId.set(folder.path, existingFolder.id);
-                if (existingFolder.parentId !== parentId) await db.items.update(existingFolder.id, { parentId });
-            } else {
-                const id = await db.items.add({ parentId, type: 'folder', title: folder.name, updated_at: Date.now() });
-                folderPathToId.set(folder.path, id as number);
-            }
-        }
-
-        for (const note of tree.notes) {
-            currentVaultPaths.add(note.path);
-            const parentId = folderPathToId.get(note.parentPath) ?? 0;
-            const existingNote = existingMap.get(note.path);
-            let noteId: number;
-
-            if (existingNote && existingNote.type === 'note') {
-                noteId = existingNote.id;
-                try {
-                    const vaultContent = await readNoteContent(note.path);
-                    const dexieContent = await db.contents.get(noteId);
-                    if (dexieContent?.content !== vaultContent) {
-                        await db.contents.put({ id: noteId, content: vaultContent });
-                        await db.items.update(noteId, { updated_at: note.updatedAt, parentId });
-                    } else if (existingNote.parentId !== parentId) {
-                        await db.items.update(noteId, { parentId });
-                    }
-                } catch (e) { console.warn('Failed to read vault content for comparison:', note.path, e); }
-            } else {
-                noteId = (await db.items.add({ parentId, type: 'note', title: note.title, updated_at: note.updatedAt })) as number;
-                try { await db.contents.add({ id: noteId, content: await readNoteContent(note.path) }); } 
-                catch { await db.contents.add({ id: noteId, content: '' }); }
-            }
-        }
-
-        for (const [path, existingItem] of existingMap.entries()) {
-            if (!currentVaultPaths.has(path) && !existingItem.isDeleted) {
-                await db.items.update(existingItem.id, { isDeleted: true, updated_at: Date.now() });
-            }
-        }
-
-        try {
-            const { reconcileVault } = await import('../lib/vault');
-            const allItems = await db.items.toArray();
-            const allContents = await db.contents.toArray();
-            await reconcileVault(allItems, allContents, getItemPath);
-        } catch (e) {
-            console.error('Failed to reconcile vault after load:', e);
-        }
-
-        const storedPath = selectedNotePathRef.current;
-        if (storedPath) {
-            const items = await db.items.toArray();
-            const matchedNode = items.find(item => {
-                if (item.type !== 'note') return false;
-                const parentPathStr = getFullPath(item.id!, items);
-                const fullPathStr = parentPathStr ? `${parentPathStr}/${item.title}` : item.title;
-                return fullPathStr === storedPath;
-            });
-            setSelectedNoteId(matchedNode ? matchedNode.id! : null);
-        }
+    const doLoadVaultIntoDb = useCallback(async () => {
+        await loadVaultIntoDb(selectedNotePathRef.current, setSelectedNoteId);
     }, [setSelectedNoteId]);
 
     // --- Seed IndexedDB ---
     async function seedIndexedDb() {
         const count = await db.items.count();
         if (count > 0) {
-            localStorage.setItem('notes_seeded_v2', 'true');
-            localStorage.setItem('keim_has_user_edits', 'true');
+            localStorage.setItem(KEYS.SEEDED_V2, 'true');
+            localStorage.setItem(KEYS.HAS_USER_EDITS, 'true');
             return;
         }
-        if (localStorage.getItem('notes_seeded_v2')) return;
+        if (localStorage.getItem(KEYS.SEEDED_V2)) return;
 
-        localStorage.setItem('notes_seeded_v2', 'true');
+        localStorage.setItem(KEYS.SEEDED_V2, 'true');
         const { addItem } = await import('../lib/db');
         const folderId = await addItem({ parentId: 0, type: 'folder', title: '🚀 Getting Started' });
         await addItem({ parentId: folderId, type: 'note', title: 'Welcome to Keim Notes' }, '# Welcome to Keim Notes\n\nLocal-first, high-performance notes.\n\n**Features:**\n- Hierarchical folders\n- Markdown editing (Milkdown)\n- PWA — works offline\n- Optional Dropbox sync');
         await addItem({ parentId: folderId, type: 'note', title: 'Cloud Sync Guide' }, '# Cloud Sync\n\n1. Open Settings.\n2. Click "Sign in with Dropbox".\n3. That\'s it!');
         await addItem({ parentId: 0, type: 'note', title: 'Quick Scratchpad' }, 'Use this for quick thoughts.');
 
-        localStorage.setItem('keim_has_user_edits', 'false');
+        localStorage.setItem(KEYS.HAS_USER_EDITS, 'false');
     }
 
     // --- Sync Observers ---
@@ -163,7 +73,7 @@ export function useAppInit() {
             const status = (e as CustomEvent).detail as SyncStatus;
             setSyncStatus(status);
             if (status === 'synced') {
-                const time = localStorage.getItem('keim_last_sync');
+                const time = localStorage.getItem(KEYS.LAST_SYNC);
                 if (time) setLastSyncTime(Number(time));
             }
         };
@@ -211,6 +121,17 @@ export function useAppInit() {
     // --- App Init Orchestration ---
     useEffect(() => {
         async function init() {
+            // Security Hardening: Never load a plaintext DEK from storage.
+            // If we find a wrapped keystore payload locally, prompt the user to unlock it.
+            const savedPayload = localStorage.getItem(KEYS.ACTIVE_DEK);
+            if (savedPayload && savedPayload.startsWith('{')) {
+                useAppStore.getState().setE2eeModalState({ isOpen: true, mode: 'unlock' });
+            } else if (savedPayload) {
+                // Destroy legacy plaintext keys immediately to close the security hole.
+                console.warn('E2EE: Destroying legacy plaintext DEK from local storage.');
+                localStorage.removeItem(KEYS.ACTIVE_DEK);
+            }
+
             if (navigator.storage && navigator.storage.persist) {
                 try { await navigator.storage.persist(); } catch (e) { console.warn('Could not request persistent storage', e); }
             }
@@ -230,7 +151,7 @@ export function useAppInit() {
                 setAppState('restore-vault');
                 const handle = await restoreVaultHandle(false);
                 if (handle) {
-                    await loadVaultIntoDb();
+                    await doLoadVaultIntoDb();
                     setAppState('ready');
                 } else {
                     setIsVaultLocked(true);
@@ -243,7 +164,7 @@ export function useAppInit() {
             await seedIndexedDb();
         }
         init().then(() => buildSearchIndex().catch(console.error)).catch(console.error);
-    }, [loadVaultIntoDb, setIsVaultLocked]);
+    }, [doLoadVaultIntoDb, setIsVaultLocked]);
 
     // --- Handlers ---
     const handlePickVault = async () => {
@@ -253,7 +174,15 @@ export function useAppInit() {
             if (handle) {
                 const currentMode = getStorageMode();
                 if (currentMode !== 'vault') {
-                    if ((await db.items.count()) > 0 && window.confirm("You have existing browser notes. Do you want to copy them into your new Vault folder?\n\nClick OK to Merge, or Cancel to start fresh.")) {
+                    const hasNotes = (await db.items.count()) > 0;
+                    let shouldMerge = false;
+                    if (hasNotes) {
+                        shouldMerge = await new Promise<boolean>((resolve) => {
+                            setConfirmMergeState({ isOpen: true, resolve });
+                        });
+                        setConfirmMergeState({ isOpen: false, resolve: null });
+                    }
+                    if (shouldMerge) {
                         const { getItemPath } = await import('../lib/db');
                         const { notePathFromTitle } = await import('../lib/vault');
                         const contents = await db.contents.toArray();
@@ -280,7 +209,7 @@ export function useAppInit() {
                         }
                     }
                 }
-                await loadVaultIntoDb();
+                await doLoadVaultIntoDb();
                 setAppState('ready');
             }
         } finally {
@@ -292,7 +221,7 @@ export function useAppInit() {
         const handle = await restoreVaultHandle(true);
         if (handle) {
             setIsVaultLocked(false);
-            await loadVaultIntoDb();
+            await doLoadVaultIntoDb();
             syncNotesWithDrive(true).catch(console.warn);
             return true;
         }
@@ -329,6 +258,7 @@ export function useAppInit() {
         handlePickVault,
         handleUnlockVault,
         handleUseBrowserStorage,
-        doSync
+        doSync,
+        confirmMergeState,
     };
 }

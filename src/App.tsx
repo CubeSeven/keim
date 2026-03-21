@@ -8,6 +8,9 @@ import { getStorageMode, setStorageMode } from './lib/vault';
 import NavigationDock from './components/NavigationDock';
 import CloudSyncPrompt from './components/CloudSyncPrompt';
 import { motion, AnimatePresence } from 'framer-motion';
+import { KEYS } from './lib/constants';
+import ConfirmModal from './components/ConfirmModal';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const Editor = lazy(() => import('./components/Editor'));
 const SettingsModal = lazy(() => import('./components/SettingsModal'));
@@ -15,6 +18,7 @@ const WelcomeScreen = lazy(() => import('./components/WelcomeScreen'));
 const CommandPalette = lazy(() => import('./components/CommandPalette').then(mod => ({ default: mod.CommandPalette })));
 const SmartFolderPopup = lazy(() => import('./components/SmartFolderPopup'));
 const Dashboard = lazy(() => import('./components/Dashboard'));
+const E2EEVaultModal = lazy(() => import('./components/E2EEVaultModal'));
 
 import { mirage } from 'ldrs';
 mirage.register();
@@ -70,7 +74,8 @@ function App() {
       isPickingVault,
       installPrompt, handleInstallPWA,
       handlePickVault, handleUnlockVault, handleUseBrowserStorage,
-      doSync
+      doSync,
+      confirmMergeState,
   } = useAppInit();
 
   const storageMode = getStorageMode();
@@ -128,22 +133,22 @@ function App() {
     if (id !== null && window.innerWidth < 768) setSidebarOpen(false);
   };
 
-  const handleAddNote = useCallback(async (explicitParentId?: number) => {
-    let parentId: number;
-    if (explicitParentId !== undefined) {
-      parentId = explicitParentId;
-    } else if (selectedFolderId !== null) {
-      // Use the folder currently active/open in the sidebar
-      parentId = selectedFolderId;
-    } else if (selectedNoteId) {
+  // Shared helper: resolve the best parentId for a new item
+  const resolveParentId = useCallback(async (explicitParentId?: number): Promise<number> => {
+    if (explicitParentId !== undefined) return explicitParentId;
+    if (selectedFolderId !== null) return selectedFolderId;
+    if (selectedNoteId) {
       const currentNote = await db.items.get(selectedNoteId);
-      parentId = currentNote?.parentId ?? 0;
-    } else {
-      parentId = 0;
+      return currentNote?.parentId ?? 0;
     }
+    return 0;
+  }, [selectedFolderId, selectedNoteId]);
+
+  const handleAddNote = useCallback(async (explicitParentId?: number) => {
+    const parentId = await resolveParentId(explicitParentId);
 
     const id = await addItem({ parentId, type: 'note', title: 'New Note' }, '');
-    localStorage.setItem('keim_has_user_edits', 'true');
+    localStorage.setItem(KEYS.HAS_USER_EDITS, 'true');
 
     if (getStorageMode() === 'vault') {
       try {
@@ -161,24 +166,12 @@ function App() {
     setSelectedNoteId(id as number);
     if (window.innerWidth < 768) setSidebarOpen(false);
 
-    const tryFocus = () => window.dispatchEvent(new CustomEvent('keim_focus_title', { detail: id }));
-    setTimeout(tryFocus, 50);
-    setTimeout(tryFocus, 150);
-    setTimeout(tryFocus, 300);
-  }, [selectedFolderId, selectedNoteId, setSelectedNoteId, setSidebarOpen]);
+    // Single dispatch — Editor's useEffect responds when the noteId dep changes
+    setTimeout(() => window.dispatchEvent(new CustomEvent('keim_focus_title', { detail: id })), 50);
+  }, [resolveParentId, setSelectedNoteId, setSidebarOpen]);
 
   const handleAddFolder = useCallback(async (explicitParentId?: number) => {
-    let parentId: number;
-    if (explicitParentId !== undefined) {
-      parentId = explicitParentId;
-    } else if (selectedFolderId !== null) {
-      parentId = selectedFolderId;
-    } else if (selectedNoteId) {
-      const currentNote = await db.items.get(selectedNoteId);
-      parentId = currentNote?.parentId ?? 0;
-    } else {
-      parentId = 0;
-    }
+    const parentId = await resolveParentId(explicitParentId);
 
     const id = await addItem({ parentId, type: 'folder', title: 'New Folder' }, '');
     localStorage.setItem('keim_has_user_edits', 'true');
@@ -198,11 +191,9 @@ function App() {
 
     if (window.innerWidth < 768) setSidebarOpen(true);
 
-    const tryRename = () => window.dispatchEvent(new CustomEvent('keim_rename_node', { detail: id }));
-    setTimeout(tryRename, 50);
-    setTimeout(tryRename, 150);
-    setTimeout(tryRename, 300);
-  }, [selectedFolderId, selectedNoteId, setSidebarOpen]);
+    // Single dispatch — Sidebar's useEffect responds when it mounts the new folder
+    setTimeout(() => window.dispatchEvent(new CustomEvent('keim_rename_node', { detail: id })), 50);
+  }, [resolveParentId, setSidebarOpen]);
 
   useKeyboardShortcuts({ handleAddNote, handleAddFolder, doSync, selectedNoteId });
 
@@ -325,6 +316,7 @@ function App() {
             }}
           />
         )}
+        <E2EEVaultModal />
       </Suspense>
 
       {/* Render Cloud Sync Prompt */}
@@ -363,6 +355,7 @@ function App() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.12, ease: 'easeInOut' }}
               >
+              <ErrorBoundary>
                 <Suspense fallback={<FallbackSpinner />}>
                   <Editor
                     noteId={selectedNoteId}
@@ -373,6 +366,7 @@ function App() {
                     lastSyncTime={lastSyncTime}
                   />
                 </Suspense>
+              </ErrorBoundary>
               </motion.div>
             ) : selectedTag ? (
               <motion.div
@@ -448,6 +442,17 @@ function App() {
             />
         )}
       </Suspense>
+
+      {/* Vault Merge Confirm Dialog */}
+      <ConfirmModal
+        isOpen={confirmMergeState.isOpen}
+        title="Merge existing notes?"
+        description="You have existing browser notes. Do you want to copy them into your new Vault folder? Click Merge to include them, or Start Fresh to leave them behind."
+        confirmLabel="Merge"
+        cancelLabel="Start Fresh"
+        onConfirm={() => confirmMergeState.resolve?.(true)}
+        onCancel={() => confirmMergeState.resolve?.(false)}
+      />
     </div>
   );
 }
