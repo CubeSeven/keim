@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand';
 import { KEYS } from '../../lib/constants';
+import { exportDEK, bufferToBase64 } from '../../lib/crypto';
 
 export interface CryptoSlice {
     e2eeModalState: { isOpen: boolean; mode: 'setup' | 'unlock' };
@@ -17,7 +18,16 @@ export const createCryptoSlice: StateCreator<CryptoSlice> = (set) => ({
     setE2eeModalState: (e2eeModalState) => set({ e2eeModalState }),
 
     activeDEK: null,
-    setActiveDEK: (activeDEK) => set({ activeDEK }),
+    setActiveDEK: (activeDEK) => {
+        set({ activeDEK });
+        if (activeDEK) {
+            exportDEK(activeDEK).then(raw => {
+                sessionStorage.setItem('SESSION_DEK', bufferToBase64(raw));
+            }).catch(console.error);
+        } else {
+            sessionStorage.removeItem('SESSION_DEK');
+        }
+    },
     
     isE2EESkipped: localStorage.getItem(KEYS.E2EE_SKIPPED) === 'true',
     setIsE2EESkipped: (isE2EESkipped) => {

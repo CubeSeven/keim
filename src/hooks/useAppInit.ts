@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../lib/db';
 import { getStorageMode, setStorageMode, openVaultPicker, restoreVaultHandle, hasSavedVault, loadVaultIntoDb } from '../lib/vault';
 import { initSync, disconnectDropbox, authorizeDropbox, syncNotesWithDrive, isDriveConnected } from '../lib/sync';
+import { importDEK, base64ToBuffer } from '../lib/crypto';
 import { buildSearchIndex } from '../lib/search';
 import { useAppStore } from '../store';
 import type { SyncStatus } from '../App';
@@ -121,15 +122,29 @@ export function useAppInit() {
     // --- App Init Orchestration ---
     useEffect(() => {
         async function init() {
-            // Security Hardening: Never load a plaintext DEK from storage.
-            // If we find a wrapped keystore payload locally, prompt the user to unlock it.
-            const savedPayload = localStorage.getItem(KEYS.ACTIVE_DEK);
-            if (savedPayload && savedPayload.startsWith('{')) {
-                useAppStore.getState().setE2eeModalState({ isOpen: true, mode: 'unlock' });
-            } else if (savedPayload) {
-                // Destroy legacy plaintext keys immediately to close the security hole.
-                console.warn('E2EE: Destroying legacy plaintext DEK from local storage.');
-                localStorage.removeItem(KEYS.ACTIVE_DEK);
+            const sessionDekBase64 = sessionStorage.getItem('SESSION_DEK');
+            let dekRestored = false;
+            if (sessionDekBase64) {
+                try {
+                    const dek = await importDEK(base64ToBuffer(sessionDekBase64));
+                    useAppStore.getState().setActiveDEK(dek);
+                    dekRestored = true;
+                } catch (e) {
+                    console.error('Failed to restore DEK from session', e);
+                }
+            }
+
+            if (!dekRestored) {
+                // Security Hardening: Never load a plaintext DEK from storage.
+                // If we find a wrapped keystore payload locally, prompt the user to unlock it.
+                const savedPayload = localStorage.getItem(KEYS.ACTIVE_DEK);
+                if (savedPayload && savedPayload.startsWith('{')) {
+                    useAppStore.getState().setE2eeModalState({ isOpen: true, mode: 'unlock' });
+                } else if (savedPayload) {
+                    // Destroy legacy plaintext keys immediately to close the security hole.
+                    console.warn('E2EE: Destroying legacy plaintext DEK from local storage.');
+                    localStorage.removeItem(KEYS.ACTIVE_DEK);
+                }
             }
 
             if (navigator.storage && navigator.storage.persist) {
