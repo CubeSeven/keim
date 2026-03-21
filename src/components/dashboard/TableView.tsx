@@ -139,6 +139,7 @@ export function TableView({
         return [...cols, ...fieldCols];
     }, [schema, onSelectNote, onUpdateNote]);
 
+    // eslint-disable-next-line react-hooks/incompatible-library
     const table = useReactTable({
         data: notes,
         columns,

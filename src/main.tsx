@@ -5,7 +5,7 @@ import App from './App.tsx'
 
 import { seedDatabase } from './lib/seed'
 
-// @ts-ignore
+// @ts-expect-error - global variable for testing/debugging
 window.seedDatabase = seedDatabase
 
 createRoot(document.getElementById('root')!).render(

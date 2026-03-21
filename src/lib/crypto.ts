@@ -74,6 +74,7 @@ export async function deriveKEK(password: string, salt: Uint8Array): Promise<Cry
     return await window.crypto.subtle.deriveKey(
         {
             name: 'PBKDF2',
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             salt: salt as any,
             iterations: ITERATIONS,
             hash: 'SHA-256'
@@ -100,6 +101,7 @@ export async function encryptTextToBuffer(text: string, dek: CryptoKey): Promise
     const iv = window.crypto.getRandomValues(new Uint8Array(IV_LENGTH));
     const encoded = new TextEncoder().encode(text);
     const ciphertext = await window.crypto.subtle.encrypt(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         { name: CRYPTO_ALGO, iv: iv as any },
         dek,
         encoded
@@ -109,6 +111,7 @@ export async function encryptTextToBuffer(text: string, dek: CryptoKey): Promise
 
 export async function decryptTextFromBuffer(ciphertext: ArrayBuffer, iv: Uint8Array, dek: CryptoKey): Promise<string> {
     const decrypted = await window.crypto.subtle.decrypt(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         { name: CRYPTO_ALGO, iv: iv as any },
         dek,
         ciphertext
@@ -125,6 +128,7 @@ export async function wrapKey(keyToWrap: CryptoKey, kek: CryptoKey): Promise<{ w
         'raw',
         keyToWrap,
         kek,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         { name: CRYPTO_ALGO, iv: iv as any }
     );
     return { wrappedKey, iv };
@@ -135,6 +139,7 @@ export async function unwrapKey(wrappedKey: ArrayBuffer, iv: Uint8Array, kek: Cr
         'raw',
         wrappedKey,
         kek,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         { name: CRYPTO_ALGO, iv: iv as any },
         { name: CRYPTO_ALGO, length: KEY_LENGTH },
         true,

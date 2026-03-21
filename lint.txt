@@ -1,0 +1,267 @@
+
+> notes-app@1.9.1 lint
+> eslint .
+
+
+/Users/panos/Documents/keim notes/src/components/Dashboard.tsx
+  82:9  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/Users/panos/Documents/keim notes/src/components/Dashboard.tsx:82:9
+  80 |
+  81 |     useEffect(() => {
+> 82 |         loadData();
+     |         ^^^^^^^^ Avoid calling setState() directly within an effect
+  83 |     }, [loadData]);
+  84 |
+  85 |  react-hooks/set-state-in-effect
+
+/Users/panos/Documents/keim notes/src/components/WelcomeScreen.tsx
+  214:22  error  Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+/Users/panos/Documents/keim notes/src/components/WelcomeScreen.tsx:214:22
+  212 |                     className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-32"
+  213 |                 >
+> 214 |                     <FeatureCard 
+      |                      ^^^^^^^^^^^ This component is created during render
+  215 |                         icon={ShieldCheck} 
+  216 |                         title="Local-First Privacy" 
+  217 |                         description="Your notes live purely on your disk device. Total control over your data with offline, native file system access."
+
+/Users/panos/Documents/keim notes/src/components/WelcomeScreen.tsx:39:25
+  37 |
+  38 |     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+> 39 |     const FeatureCard = ({ icon: Icon, title, description }: { icon: any, title: string, description: string }) => (
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 40 |         <motion.div 
+     | ^^^^^^^^^^^^^^^^^^^^
+> 41 |             variants={itemVariants}
+     …
+     | ^^^^^^^^^^^^^^^^^^^^
+> 49 |         </motion.div>
+     | ^^^^^^^^^^^^^^^^^^^^
+> 50 |     );
+     | ^^^^^^ The component is created during render here
+  51 |
+  52 |     if (showStorageOptions) {
+  53 |         return (                                                                             react-hooks/static-components
+  219:22  error  Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+/Users/panos/Documents/keim notes/src/components/WelcomeScreen.tsx:219:22
+  217 |                         description="Your notes live purely on your disk device. Total control over your data with offline, native file system access."
+  218 |                     />
+> 219 |                     <FeatureCard 
+      |                      ^^^^^^^^^^^ This component is created during render
+  220 |                         icon={Lock} 
+  221 |                         title="End-to-End Encryption" 
+  222 |                         description="Military-grade zero-knowledge cloud sync. Your data is scrambled with AES-GCM before it ever leaves your device."
+
+/Users/panos/Documents/keim notes/src/components/WelcomeScreen.tsx:39:25
+  37 |
+  38 |     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+> 39 |     const FeatureCard = ({ icon: Icon, title, description }: { icon: any, title: string, description: string }) => (
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 40 |         <motion.div 
+     | ^^^^^^^^^^^^^^^^^^^^
+> 41 |             variants={itemVariants}
+     …
+     | ^^^^^^^^^^^^^^^^^^^^
+> 49 |         </motion.div>
+     | ^^^^^^^^^^^^^^^^^^^^
+> 50 |     );
+     | ^^^^^^ The component is created during render here
+  51 |
+  52 |     if (showStorageOptions) {
+  53 |         return (  react-hooks/static-components
+  224:22  error  Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+/Users/panos/Documents/keim notes/src/components/WelcomeScreen.tsx:224:22
+  222 |                         description="Military-grade zero-knowledge cloud sync. Your data is scrambled with AES-GCM before it ever leaves your device."
+  223 |                     />
+> 224 |                     <FeatureCard 
+      |                      ^^^^^^^^^^^ This component is created during render
+  225 |                         icon={Layers} 
+  226 |                         title="Smart Properties" 
+  227 |                         description="Add Notion-like database power to plain Markdown files using simple YAML headers and custom schemas."
+
+/Users/panos/Documents/keim notes/src/components/WelcomeScreen.tsx:39:25
+  37 |
+  38 |     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+> 39 |     const FeatureCard = ({ icon: Icon, title, description }: { icon: any, title: string, description: string }) => (
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 40 |         <motion.div 
+     | ^^^^^^^^^^^^^^^^^^^^
+> 41 |             variants={itemVariants}
+     …
+     | ^^^^^^^^^^^^^^^^^^^^
+> 49 |         </motion.div>
+     | ^^^^^^^^^^^^^^^^^^^^
+> 50 |     );
+     | ^^^^^^ The component is created during render here
+  51 |
+  52 |     if (showStorageOptions) {
+  53 |         return (                  react-hooks/static-components
+  229:22  error  Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+/Users/panos/Documents/keim notes/src/components/WelcomeScreen.tsx:229:22
+  227 |                         description="Add Notion-like database power to plain Markdown files using simple YAML headers and custom schemas."
+  228 |                     />
+> 229 |                     <FeatureCard 
+      |                      ^^^^^^^^^^^ This component is created during render
+  230 |                         icon={Zap} 
+  231 |                         title="Dynamic Dashboards" 
+  232 |                         description="Visualize your notes instantly. Switch between Kanban, Gallery, and Calendar views without any configuration."
+
+/Users/panos/Documents/keim notes/src/components/WelcomeScreen.tsx:39:25
+  37 |
+  38 |     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+> 39 |     const FeatureCard = ({ icon: Icon, title, description }: { icon: any, title: string, description: string }) => (
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 40 |         <motion.div 
+     | ^^^^^^^^^^^^^^^^^^^^
+> 41 |             variants={itemVariants}
+     …
+     | ^^^^^^^^^^^^^^^^^^^^
+> 49 |         </motion.div>
+     | ^^^^^^^^^^^^^^^^^^^^
+> 50 |     );
+     | ^^^^^^ The component is created during render here
+  51 |
+  52 |     if (showStorageOptions) {
+  53 |         return (                      react-hooks/static-components
+  234:22  error  Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+/Users/panos/Documents/keim notes/src/components/WelcomeScreen.tsx:234:22
+  232 |                         description="Visualize your notes instantly. Switch between Kanban, Gallery, and Calendar views without any configuration."
+  233 |                     />
+> 234 |                     <FeatureCard 
+      |                      ^^^^^^^^^^^ This component is created during render
+  235 |                         icon={Smartphone} 
+  236 |                         title="PWA Ready" 
+  237 |                         description="Install Keim on your phone or desktop. Works fully offline, loads instantly, and feels like a native application."
+
+/Users/panos/Documents/keim notes/src/components/WelcomeScreen.tsx:39:25
+  37 |
+  38 |     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+> 39 |     const FeatureCard = ({ icon: Icon, title, description }: { icon: any, title: string, description: string }) => (
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 40 |         <motion.div 
+     | ^^^^^^^^^^^^^^^^^^^^
+> 41 |             variants={itemVariants}
+     …
+     | ^^^^^^^^^^^^^^^^^^^^
+> 49 |         </motion.div>
+     | ^^^^^^^^^^^^^^^^^^^^
+> 50 |     );
+     | ^^^^^^ The component is created during render here
+  51 |
+  52 |     if (showStorageOptions) {
+  53 |         return (           react-hooks/static-components
+  239:22  error  Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+/Users/panos/Documents/keim notes/src/components/WelcomeScreen.tsx:239:22
+  237 |                         description="Install Keim on your phone or desktop. Works fully offline, loads instantly, and feels like a native application."
+  238 |                     />
+> 239 |                     <FeatureCard 
+      |                      ^^^^^^^^^^^ This component is created during render
+  240 |                         icon={Globe} 
+  241 |                         title="Open Source Tools" 
+  242 |                         description="Completely free and transparent. No subscriptions, no hidden fees, no locked-in rigid formats. Forever."
+
+/Users/panos/Documents/keim notes/src/components/WelcomeScreen.tsx:39:25
+  37 |
+  38 |     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+> 39 |     const FeatureCard = ({ icon: Icon, title, description }: { icon: any, title: string, description: string }) => (
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 40 |         <motion.div 
+     | ^^^^^^^^^^^^^^^^^^^^
+> 41 |             variants={itemVariants}
+     …
+     | ^^^^^^^^^^^^^^^^^^^^
+> 49 |         </motion.div>
+     | ^^^^^^^^^^^^^^^^^^^^
+> 50 |     );
+     | ^^^^^^ The component is created during render here
+  51 |
+  52 |     if (showStorageOptions) {
+  53 |         return (              react-hooks/static-components
+
+/Users/panos/Documents/keim notes/src/components/dashboard/KanbanView.tsx
+  232:26  error  React Hook "useCallback" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?  react-hooks/rules-of-hooks
+  247:25  error  React Hook "useMemo" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?      react-hooks/rules-of-hooks
+  248:37  error  React Hook "useState" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?     react-hooks/rules-of-hooks
+  249:53  error  React Hook "useState" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?     react-hooks/rules-of-hooks
+  252:24  error  React Hook "useRef" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?       react-hooks/rules-of-hooks
+  255:28  error  React Hook "useCallback" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?  react-hooks/rules-of-hooks
+  263:27  error  React Hook "useMemo" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?      react-hooks/rules-of-hooks
+  272:21  error  React Hook "useMemo" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?      react-hooks/rules-of-hooks
+  276:23  error  React Hook "useMemo" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?      react-hooks/rules-of-hooks
+  283:21  error  React Hook "useSensors" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?   react-hooks/rules-of-hooks
+  284:9   error  React Hook "useSensor" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?    react-hooks/rules-of-hooks
+  285:9   error  React Hook "useSensor" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?    react-hooks/rules-of-hooks
+  286:9   error  React Hook "useSensor" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?    react-hooks/rules-of-hooks
+
+/Users/panos/Documents/keim notes/src/components/dashboard/TableView.tsx
+  142:19  warning  Compilation Skipped: Use of incompatible library
+
+This API returns functions which cannot be memoized without leading to stale UI. To prevent this, by default React Compiler will skip memoizing this component/hook. However, you may see issues if values from this API are passed to other components/hooks that are memoized.
+
+/Users/panos/Documents/keim notes/src/components/dashboard/TableView.tsx:142:19
+  140 |     }, [schema, onSelectNote, onUpdateNote]);
+  141 |
+> 142 |     const table = useReactTable({
+      |                   ^^^^^^^^^^^^^ TanStack Table's `useReactTable()` API returns functions that cannot be memoized safely
+  143 |         data: notes,
+  144 |         columns,
+  145 |         state: { sorting },  react-hooks/incompatible-library
+
+/Users/panos/Documents/keim notes/src/lib/__tests__/setup.ts
+  6:5  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+/Users/panos/Documents/keim notes/src/lib/cloud/ProviderManager.ts
+  8:5  error  'activeProvider' is never reassigned. Use 'const' instead  prefer-const
+
+/Users/panos/Documents/keim notes/src/lib/crypto.ts
+   77:27  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  103:40  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  112:40  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  128:40  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  138:40  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/panos/Documents/keim notes/src/lib/sync.ts
+   22:5   error  '_vaultIsLocked' is never reassigned. Use 'const' instead              prefer-const
+   98:9   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  101:9   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  162:30  error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  201:9   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  214:21  error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  222:18  error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  409:9   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  601:9   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+
+/Users/panos/Documents/keim notes/src/main.tsx
+  8:1  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+/Users/panos/Documents/keim notes/src/store/slices/uiSlice.ts
+  24:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+✖ 39 problems (38 errors, 1 warning)
+  2 errors and 0 warnings potentially fixable with the `--fix` option.
+

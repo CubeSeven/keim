@@ -21,7 +21,7 @@ export interface UiSlice {
 
 export const createUiSlice: StateCreator<UiSlice> = (set) => ({
     isSidebarOpen: localStorage.getItem(KEYS.SIDEBAR_OPEN) === 'true',
-    toggleSidebar: () => set((state: any) => {
+    toggleSidebar: () => set((state: UiSlice) => {
         const newState = !state.isSidebarOpen;
         localStorage.setItem(KEYS.SIDEBAR_OPEN, newState.toString());
         return { isSidebarOpen: newState };

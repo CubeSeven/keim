@@ -5,7 +5,7 @@ import type { CloudProvider } from './CloudProvider';
 // though right now simple import is fine.
 import { DropboxProvider } from './DropboxProvider';
 
-let activeProvider: CloudProvider = new DropboxProvider();
+const activeProvider: CloudProvider = new DropboxProvider();
 
 export function getCloudProvider(): CloudProvider {
     return activeProvider;

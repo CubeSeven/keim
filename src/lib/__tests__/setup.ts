@@ -3,7 +3,7 @@ import { webcrypto } from 'node:crypto';
 
 // Polyfill Web Crypto API for jsdom since jsdom doesn't provide it by default
 if (!globalThis.crypto) {
-    // @ts-ignore
+    // @ts-expect-error - webcrypto missing from node types
     globalThis.crypto = webcrypto;
 }
 

@@ -217,8 +217,7 @@ export function KanbanView({
     onUpdateNote,
     onReorderNotes
 }: KanbanViewProps) {
-    if (!schema) return null;
-    const selectField = schema.fields.find(f => f.type === 'select');
+    const selectField = schema?.fields.find(f => f.type === 'select');
 
     // Make options and columnOrder robust against missing selectField
     const options = selectField?.options || [];
@@ -343,6 +342,7 @@ export function KanbanView({
         onUpdateNote(noteId, selectField.name, newValue);
     };
 
+    if (!schema) return null;
     if (!selectField) {
         return (
             <div style={{ padding: '40px 20px', textAlign: 'center', opacity: 0.35, fontSize: '0.85rem' }}>

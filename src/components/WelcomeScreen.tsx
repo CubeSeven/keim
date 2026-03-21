@@ -11,43 +11,43 @@ interface WelcomeScreenProps {
     onInstallPWA?: () => void;
 }
 
+const containerVariants: Variants = {
+    hidden: { opacity: 0 },
+    visible: {
+        opacity: 1,
+        transition: {
+            staggerChildren: 0.1,
+            delayChildren: 0.1
+        }
+    }
+};
+
+const itemVariants: Variants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { 
+        opacity: 1, 
+        y: 0, 
+        transition: { duration: 0.5, ease: "easeOut" } 
+    }
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const FeatureCard = ({ icon: Icon, title, description }: { icon: any, title: string, description: string }) => (
+    <motion.div 
+        variants={itemVariants}
+        className="p-6 rounded-2xl border border-dark-bg/5 dark:border-light-bg/5 bg-white/40 dark:bg-dark-ui/40 backdrop-blur-md shadow-sm hover:shadow-md transition-all duration-300 group"
+    >
+        <div className="w-10 h-10 rounded-xl bg-dark-bg/5 dark:bg-light-bg/5 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+            <Icon size={20} className="text-dark-bg/70 dark:text-light-bg/70" />
+        </div>
+        <h3 className="text-sm font-bold mb-1.5 tracking-tight">{title}</h3>
+        <p className="text-xs text-dark-bg/50 dark:text-light-bg/50 leading-relaxed">{description}</p>
+    </motion.div>
+);
+
 export default function WelcomeScreen({ onPickVault, onUseBrowserStorage, isPickingVault, installPrompt, onInstallPWA }: WelcomeScreenProps) {
     const fsSupported = isFileSystemSupported();
     const [showStorageOptions, setShowStorageOptions] = useState(false);
-
-    const containerVariants: Variants = {
-        hidden: { opacity: 0 },
-        visible: {
-            opacity: 1,
-            transition: {
-                staggerChildren: 0.1,
-                delayChildren: 0.1
-            }
-        }
-    };
-
-    const itemVariants: Variants = {
-        hidden: { opacity: 0, y: 20 },
-        visible: { 
-            opacity: 1, 
-            y: 0, 
-            transition: { duration: 0.5, ease: "easeOut" } 
-        }
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const FeatureCard = ({ icon: Icon, title, description }: { icon: any, title: string, description: string }) => (
-        <motion.div 
-            variants={itemVariants}
-            className="p-6 rounded-2xl border border-dark-bg/5 dark:border-light-bg/5 bg-white/40 dark:bg-dark-ui/40 backdrop-blur-md shadow-sm hover:shadow-md transition-all duration-300 group"
-        >
-            <div className="w-10 h-10 rounded-xl bg-dark-bg/5 dark:bg-light-bg/5 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
-                <Icon size={20} className="text-dark-bg/70 dark:text-light-bg/70" />
-            </div>
-            <h3 className="text-sm font-bold mb-1.5 tracking-tight">{title}</h3>
-            <p className="text-xs text-dark-bg/50 dark:text-light-bg/50 leading-relaxed">{description}</p>
-        </motion.div>
-    );
 
     if (showStorageOptions) {
         return (

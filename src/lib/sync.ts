@@ -19,6 +19,7 @@ let lastSyncTime: number | null = Number(localStorage.getItem(KEYS.LAST_SYNC)) |
 // When vault is locked (permission revoked on Android), we must NOT sync —
 // the local Dexie cache may be stale and uploading it would overwrite newer
 // cloud / disk data. isVaultLocked is managed via useAppStore and synced here.
+// eslint-disable-next-line prefer-const
 let _vaultIsLocked = false;
 
 // Cross-tab synchronization
@@ -95,10 +96,10 @@ async function secureUpload(path: string, contentStr: string, dek: CryptoKey | n
         combined.set(iv, 0);
         combined.set(new Uint8Array(ciphertext), iv.length);
         const baseName = path.endsWith('.json') ? path.slice(0, -5) : path;
-        DEBUG && console.log(`🔒 [E2EE] Encrypting and uploading ${baseName}.enc instead of ${path}`);
+        if (DEBUG) console.log(`🔒 [E2EE] Encrypting and uploading ${baseName}.enc instead of ${path}`);
         await getCloudProvider().uploadFile(`${baseName}.enc`, new Blob([combined]));
     } else {
-        DEBUG && console.log(`🌐 [Plaintext] Uploading unencrypted ${path}`);
+        if (DEBUG) console.log(`🌐 [Plaintext] Uploading unencrypted ${path}`);
         await getCloudProvider().uploadFile(path, contentStr);
     }
 }
@@ -159,7 +160,7 @@ export async function syncNotesWithDrive(background = false) {
     if (typeof navigator !== 'undefined' && 'locks' in navigator) {
         if (background) {
             return navigator.locks.request('keim_sync_leader', { ifAvailable: true }, async (lock) => {
-                if (!lock) { DEBUG && console.log('Sync skipped: another tab is syncing.'); return; }
+                if (!lock) { if (DEBUG) console.log('Sync skipped: another tab is syncing.'); return; }
                 return _runSync(background);
             });
         }
@@ -198,7 +199,7 @@ async function _runSync(background = false) {
     const storageMode = getStorageMode();
 
     try {
-        DEBUG && console.log('Starting Dropbox Sync...');
+        if (DEBUG) console.log('Starting Dropbox Sync...');
         broadcastSyncStatus('syncing');
 
         // Ensure the keim folder exists (silent on conflict)
@@ -211,7 +212,7 @@ async function _runSync(background = false) {
 
             // If empty and not skipped, prompt for setup
             if (vaultState === 'EMPTY' && !isE2EESkipped && !activeDEK) {
-                    DEBUG && console.log('Sync paused: Fresh vault, asking for E2EE setup.');
+                    if (DEBUG) console.log('Sync paused: Fresh vault, asking for E2EE setup.');
                  setE2eeModalState({ isOpen: true, mode: 'setup' });
                  broadcastSyncStatus('idle');
                  return;
@@ -219,7 +220,7 @@ async function _runSync(background = false) {
 
             // If locked and no DEK, prompt for password
             if (vaultState === 'LOCKED' && !activeDEK) {
-                 DEBUG && console.log('Sync paused: Vault is E2EE locked. Asking for password.');
+                 if (DEBUG) console.log('Sync paused: Vault is E2EE locked. Asking for password.');
                  setE2eeModalState({ isOpen: true, mode: 'unlock' });
                  broadcastSyncStatus('idle');
                  return;
@@ -406,7 +407,7 @@ async function _runSync(background = false) {
             }
         }
 
-        DEBUG && console.log(`Sync: ${toDownload.length} to download, ${toUpload.length} to upload.`);
+        if (DEBUG) console.log(`Sync: ${toDownload.length} to download, ${toUpload.length} to upload.`);
 
         // Downloads - Parallelised with concurrency limit to prevent half-synced
         // state on partial failure while still being fast on mobile.
@@ -598,7 +599,7 @@ async function _runSync(background = false) {
 
         lastSyncTime = Date.now();
         localStorage.setItem(KEYS.LAST_SYNC, lastSyncTime.toString());
-        DEBUG && console.log('Dropbox Sync complete!');
+        if (DEBUG) console.log('Dropbox Sync complete!');
         broadcastSyncStatus('synced');
         
         // Notify other tabs to refresh their UI

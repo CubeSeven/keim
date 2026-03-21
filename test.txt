@@ -1,0 +1,33 @@
+
+> notes-app@1.9.1 test:run
+> vitest run
+
+
+[1m[46m RUN [49m[22m [36mv4.1.0 [39m[90m/Users/panos/Documents/keim notes[39m
+
+ [32m✓[39m src/test/search.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+[90mstdout[2m | src/lib/__tests__/sync.test.ts[2m > [22m[2msync-logic.ts[2m > [22m[2mpurgeTombstones[2m > [22m[2mshould purge tombstones older than 30 days
+[22m[39mSync: purged stale tombstone for id 2 (deleted 31 days ago).
+
+[90mstdout[2m | src/lib/__tests__/sync.test.ts[2m > [22m[2msync-logic.ts[2m > [22m[2mpurgeTombstones[2m > [22m[2mshould fallback to updated_at if deletedAt is missing (backwards compatibility)
+[22m[39mSync: purged stale tombstone for id 1 (deleted 35 days ago).
+
+ [32m✓[39m src/lib/__tests__/sync.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/test/smartProps.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/crypto.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 55[2mms[22m[39m
+[90mstdout[2m | src/test/NavigationDock.test.tsx[2m > [22m[2mNavigationDock Component[2m > [22m[2mcalls onAddNote when the New Note button is clicked
+[22m[39m[NavigationDock] Rendering with showSlashButton: [90mundefined[39m
+
+[90mstdout[2m | src/test/NavigationDock.test.tsx[2m > [22m[2mNavigationDock Component[2m > [22m[2mcalls onAddFolder when the New Folder button is clicked
+[22m[39m[NavigationDock] Rendering with showSlashButton: [90mundefined[39m
+
+[90mstdout[2m | src/test/NavigationDock.test.tsx[2m > [22m[2mNavigationDock Component[2m > [22m[2mdispatches a Alt+K keyboard event when the Search button is clicked
+[22m[39m[NavigationDock] Rendering with showSlashButton: [90mundefined[39m
+
+ [32m✓[39m src/test/NavigationDock.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m5 passed[39m[22m[90m (5)[39m
+[2m      Tests [22m [1m[32m32 passed[39m[22m[90m (32)[39m
+[2m   Start at [22m 21:11:07
+[2m   Duration [22m 1.00s[2m (transform 245ms, setup 730ms, import 301ms, tests 89ms, environment 2.90s)[22m
+
