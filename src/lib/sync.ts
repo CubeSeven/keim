@@ -410,6 +410,7 @@ async function _runSync(background = false) {
 
         // Downloads - Parallelised with concurrency limit to prevent half-synced
         // state on partial failure while still being fast on mobile.
+        // Concurrency set to 3 to strictly respect Dropbox rate limits.
         const downloadTasks = toDownload.map(id => async () => {
             try {
                 const isRemoteDeleted = remoteManifest.items[id]?.isDeleted;
@@ -477,10 +478,11 @@ async function _runSync(background = false) {
                 // Continue with remaining downloads instead of aborting the entire sync
             }
         });
-        await runParallel(downloadTasks);
+        await runParallel(downloadTasks, 3);
 
         // Uploads - Parallelised with concurrency limit.
-        // Each note has 2 files (item + content), so we batch them as one task.
+        // Each note has up to 2 files (item + content), so concurrency 2 means
+        // up to 4 parallel API calls. This safely stays under Dropbox's 429 thresholds.
         const uploadTasks = toUpload.map(item => async () => {
             await secureUpload(`/items/${item.id}.json`, JSON.stringify(item), dek);
             if (item.type === 'note' && !item.isDeleted) {
@@ -506,7 +508,7 @@ async function _runSync(background = false) {
             }
             remoteManifest.items[item.id!] = manifestEntry;
         });
-        await runParallel(uploadTasks);
+        await runParallel(uploadTasks, 2);
 
         if (toUpload.length > 0 || toDownload.length > 0 || manifestPruned) {
             remoteManifest.lastUpdated = Date.now();
