@@ -2,6 +2,7 @@ import { X, Moon, Sun, Monitor, CheckCircle2, AlertCircle, Download, Upload, Inf
 import { syncNotesWithDrive, isDriveConnected, getLastSyncTime, authorizeDropbox, loginToDropbox, disconnectDropbox } from '../lib/sync';
 import { exportToFolder, importMarkdownFiles } from '../lib/export-import';
 import { APP_VERSION } from '../constants';
+import { KEYS } from '../lib/constants';
 import { isFileSystemSupported } from '../lib/vault';
 import { useState, useEffect } from 'react';
 import { enrollBiometric, revokeBiometric, isBiometricAvailable } from '../lib/biometrics';
@@ -80,6 +81,8 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
     // UI State
     const [activeTab, setActiveTab] = useState<'general' | 'sync' | 'appearance' | 'shortcuts'>('general');
     const [bioAvailable, setBioAvailable] = useState(false);
+    const [customDbxKey, setCustomDbxKey] = useState(() => localStorage.getItem(KEYS.CUSTOM_DBX_KEY) || '');
+    const [showCustomKey, setShowCustomKey] = useState(false);
 
     useEffect(() => {
         isBiometricAvailable().then(setBioAvailable);
@@ -519,6 +522,39 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                     <div className="flex items-start gap-2 bg-red-500/10 text-red-600 dark:text-red-400 p-2.5 rounded-lg text-xs font-medium mt-2">
                                                         <AlertCircle size={14} className="shrink-0 mt-0.5" />
                                                         <p>{error}</p>
+                                                    </div>
+                                                )}
+                                                {!connected && (
+                                                    <div className="mt-2 text-center">
+                                                        <button 
+                                                            onClick={() => setShowCustomKey(!showCustomKey)}
+                                                            className="text-[10px] uppercase tracking-wider font-bold opacity-50 hover:opacity-100 transition-opacity"
+                                                        >
+                                                            {showCustomKey ? 'Hide Custom Key Options' : 'Missing App Key?'}
+                                                        </button>
+                                                        {showCustomKey && (
+                                                            <div className="mt-3 p-3 bg-dark-bg/5 dark:bg-light-bg/5 rounded-lg text-left space-y-2 border border-dark-bg/10 dark:border-light-bg/10">
+                                                                <label className="text-xs font-semibold opacity-80 block">Custom Dropbox App Key</label>
+                                                                <input 
+                                                                    type="text" 
+                                                                    placeholder="Enter your Dropbox App Key"
+                                                                    value={customDbxKey}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value.trim();
+                                                                        setCustomDbxKey(val);
+                                                                        if (val) {
+                                                                            localStorage.setItem(KEYS.CUSTOM_DBX_KEY, val);
+                                                                        } else {
+                                                                            localStorage.removeItem(KEYS.CUSTOM_DBX_KEY);
+                                                                        }
+                                                                    }}
+                                                                    className="w-full bg-light-bg dark:bg-dark-bg border border-light-ui dark:border-dark-ui rounded text-xs p-2 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                                                                />
+                                                                <p className="text-[10px] opacity-60 leading-relaxed">
+                                                                    If the App Key wasn't baked into this build, provide one here. It will be saved locally on this device.
+                                                                </p>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>

@@ -11,6 +11,7 @@ export const KEYS = {
 
     // Sync
     LAST_SYNC:          'keim_last_sync',
+    CUSTOM_DBX_KEY:     'keim_custom_dropbox_key',
 
     // Onboarding
     HAS_USER_EDITS:     'keim_has_user_edits',

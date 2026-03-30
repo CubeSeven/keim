@@ -1,5 +1,6 @@
 import { Dropbox, DropboxAuth } from 'dropbox';
 import type { CloudProvider } from './CloudProvider';
+import { KEYS } from '../constants';
 
 interface DropboxTokenResponse {
     refresh_token?: string;
@@ -19,10 +20,16 @@ export class DropboxProvider implements CloudProvider {
     private dbx: Dropbox | null = null;
     private folderChecked = false;
 
+    private getClientId(): string {
+        const custom = localStorage.getItem(KEYS.CUSTOM_DBX_KEY);
+        return custom || CLIENT_ID;
+    }
+
     private getDbxAuth(): DropboxAuth | null {
         if (!this.dbxAuth) {
-            if (!CLIENT_ID) return null;
-            this.dbxAuth = new DropboxAuth({ clientId: CLIENT_ID });
+            const clientId = this.getClientId();
+            if (!clientId) return null;
+            this.dbxAuth = new DropboxAuth({ clientId });
         }
         return this.dbxAuth;
     }
@@ -75,7 +82,7 @@ export class DropboxProvider implements CloudProvider {
 
     async login(): Promise<void> {
         const auth = this.getDbxAuth();
-        if (!auth) throw new Error('Dropbox App Key is not configured.');
+        if (!auth) throw new Error('Dropbox App Key is not configured. Please build with VITE_DROPBOX_APP_KEY or configure a custom key in Settings.');
         const authUrl = await auth.getAuthenticationUrl(
             this.getRedirectUri(),
             undefined,
