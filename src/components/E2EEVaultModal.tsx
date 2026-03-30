@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Lock, KeyRound, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { deriveKEK, generateDEK, wrapKey, unwrapKey, generateSalt, bufferToBase64, base64ToBuffer } from '../lib/crypto';
+import { unlockWithBiometric, isBiometricAvailable } from '../lib/biometrics';
 import { getCloudProvider } from '../lib/cloud/ProviderManager';
 import { syncNotesWithDrive, resetLocalSyncState } from '../lib/sync';
 import { KEYS } from '../lib/constants';
 
 export default function E2EEVaultModal() {
-    const { e2eeModalState, setE2eeModalState, setActiveDEK, setIsE2EESkipped } = useAppStore();
+    const { e2eeModalState, setE2eeModalState, setActiveDEK, setIsE2EESkipped, isBiometricEnrolled } = useAppStore();
     const { isOpen, mode } = e2eeModalState;
 
     const [password, setPassword] = useState('');
@@ -19,6 +20,11 @@ export default function E2EEVaultModal() {
     const [attempts, setAttempts] = useState(0);
     const [lockoutUntil, setLockoutUntil] = useState<number>(0);
     const isLockedOut = Date.now() < lockoutUntil;
+
+    const [bioAvailable, setBioAvailable] = useState(false);
+    useEffect(() => {
+        isBiometricAvailable().then(setBioAvailable);
+    }, []);
 
     const closeModal = () => {
         if (processing) return;
@@ -142,6 +148,26 @@ export default function E2EEVaultModal() {
         }
     };
 
+    const handleBioUnlock = async () => {
+        setProcessing(true);
+        setError(null);
+        try {
+            const dek = await unlockWithBiometric();
+            if (dek) {
+                setActiveDEK(dek);
+                setAttempts(0);
+                closeModal();
+                setTimeout(() => syncNotesWithDrive(), 100);
+            } else {
+                setError('Biometric verification failed or was cancelled.');
+            }
+        } catch (e) {
+            setError('Biometric error: ' + (e as Error).message);
+        } finally {
+            setProcessing(false);
+        }
+    };
+
     return (
         <AnimatePresence>
             {isOpen && (
@@ -246,6 +272,18 @@ export default function E2EEVaultModal() {
                                         >
                                             {mode === 'setup' ? 'Enable & Sync' : 'Unlock Vault'}
                                         </button>
+                                        
+                                        {mode === 'unlock' && bioAvailable && isBiometricEnrolled && (
+                                            <button
+                                                disabled={isLockedOut}
+                                                onClick={handleBioUnlock}
+                                                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-indigo-500/20"
+                                            >
+                                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 11h.01"/><path d="M15 15h.01"/><path d="M15 11h.01"/><path d="M15 7h.01"/><path d="M12 15h.01"/><path d="M12 7h.01"/><path d="M9 15h.01"/><path d="M9 11h.01"/><path d="M9 7h.01"/><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/></svg>
+                                                Unlock with Biometrics
+                                            </button>
+                                        )}
+
                                         <button
                                             onClick={mode === 'setup' ? () => { setIsE2EESkipped(true); closeModal(); setTimeout(() => syncNotesWithDrive(), 100); } : closeModal}
                                             className="w-full flex items-center justify-center py-3 rounded-xl font-bold text-sm text-dark-bg/60 dark:text-light-bg/60 hover:bg-dark-bg/5 dark:hover:bg-white/5 transition-all"

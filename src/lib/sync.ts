@@ -4,6 +4,7 @@ import { DropboxProvider } from './cloud/DropboxProvider';
 import { writeNoteToVault, deleteFromVault, getStorageMode, notePathFromTitle } from './vault';
 import { useAppStore } from '../store';
 import { encryptTextToBuffer, decryptTextFromBuffer } from './crypto';
+import { revokeBiometric } from './biometrics';
 import { KEYS } from '../lib/constants';
 import { purgeTombstones, buildRemotePathMap, buildDiffLists, type SyncManifest, type SyncManifestItem } from './sync-logic';
 
@@ -77,7 +78,9 @@ export function disconnectDropbox() {
     
     // Security: Purge encryption keys from memory and disk on disconnect
     localStorage.removeItem('keim_active_dek');
+    revokeBiometric();
     useAppStore.getState().setActiveDEK(null);
+    useAppStore.getState().setIsBiometricEnrolled(false);
 }
 
 export function resetLocalSyncState() {

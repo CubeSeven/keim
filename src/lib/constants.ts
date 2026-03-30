@@ -26,4 +26,5 @@ export const KEYS = {
     // E2EE
     E2EE_SKIPPED:       'keim_e2ee_skipped',
     ACTIVE_DEK:         'keim_active_dek',
+    BIO_CREDENTIAL:     'keim_bio_credential',
 } as const;

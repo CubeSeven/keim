@@ -11,6 +11,9 @@ export interface CryptoSlice {
     
     isE2EESkipped: boolean;
     setIsE2EESkipped: (skipped: boolean) => void;
+
+    isBiometricEnrolled: boolean;
+    setIsBiometricEnrolled: (enrolled: boolean) => void;
 }
 
 export const createCryptoSlice: StateCreator<CryptoSlice> = (set) => ({
@@ -34,4 +37,7 @@ export const createCryptoSlice: StateCreator<CryptoSlice> = (set) => ({
          localStorage.setItem(KEYS.E2EE_SKIPPED, isE2EESkipped.toString());
          set({ isE2EESkipped });
     },
+
+    isBiometricEnrolled: !!localStorage.getItem(KEYS.BIO_CREDENTIAL),
+    setIsBiometricEnrolled: (isBiometricEnrolled) => set({ isBiometricEnrolled }),
 });

@@ -3,6 +3,7 @@ import { db } from '../lib/db';
 import { getStorageMode, setStorageMode, openVaultPicker, restoreVaultHandle, hasSavedVault, loadVaultIntoDb } from '../lib/vault';
 import { initSync, disconnectDropbox, authorizeDropbox, syncNotesWithDrive, isDriveConnected } from '../lib/sync';
 import { importDEK, base64ToBuffer } from '../lib/crypto';
+import { unlockWithBiometric } from '../lib/biometrics';
 import { buildSearchIndex } from '../lib/search';
 import { useAppStore } from '../store';
 import type { SyncStatus } from '../App';
@@ -131,6 +132,21 @@ export function useAppInit() {
                     dekRestored = true;
                 } catch (e) {
                     console.error('Failed to restore DEK from session', e);
+                }
+            }
+
+            if (!dekRestored) {
+                const hasBio = !!localStorage.getItem(KEYS.BIO_CREDENTIAL);
+                if (hasBio) {
+                    try {
+                        const dek = await unlockWithBiometric();
+                        if (dek) {
+                            useAppStore.getState().setActiveDEK(dek);
+                            dekRestored = true;
+                        }
+                    } catch (e) {
+                        console.error('Biometric unlock failed during init', e);
+                    }
                 }
             }
 

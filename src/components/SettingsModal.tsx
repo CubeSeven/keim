@@ -4,6 +4,7 @@ import { exportToFolder, importMarkdownFiles } from '../lib/export-import';
 import { APP_VERSION } from '../constants';
 import { isFileSystemSupported } from '../lib/vault';
 import { useState, useEffect } from 'react';
+import { enrollBiometric, revokeBiometric, isBiometricAvailable } from '../lib/biometrics';
 import { motion, AnimatePresence } from 'framer-motion';
 import { mirage } from 'ldrs';
 mirage.register();
@@ -66,7 +67,7 @@ interface SettingsModalProps {
 import { useAppStore } from '../store';
 
 export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChangeVault, onSwitchToBrowserStorage, onSyncStatusChange, onInstallPWA, initialTab = 'general', storageMode }: SettingsModalProps) {
-    const { activeDEK, setE2eeModalState } = useAppStore();
+    const { activeDEK, setE2eeModalState, isBiometricEnrolled, setIsBiometricEnrolled } = useAppStore();
     const [syncing, setSyncing] = useState(false);
     const [connected, setConnected] = useState(false);
     const [lastSync, setLastSync] = useState<number | null>(null);
@@ -78,6 +79,11 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
 
     // UI State
     const [activeTab, setActiveTab] = useState<'general' | 'sync' | 'appearance' | 'shortcuts'>('general');
+    const [bioAvailable, setBioAvailable] = useState(false);
+
+    useEffect(() => {
+        isBiometricAvailable().then(setBioAvailable);
+    }, []);
 
     useEffect(() => {
         if (isOpen) {
@@ -578,6 +584,40 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                     <button disabled className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-semibold bg-light-ui dark:bg-dark-ui text-dark-bg/50 dark:text-light-bg/50 cursor-not-allowed">
                                                         Connect to a Cloud Provider First
                                                     </button>
+                                                )}
+                                                
+                                                {/* Biometric Toggle */}
+                                                {activeDEK && bioAvailable && (
+                                                    <div className="mt-4 pt-4 border-t border-light-ui dark:border-dark-ui flex items-center justify-between">
+                                                        <div>
+                                                            <p className="text-sm font-semibold">Biometric Unlock</p>
+                                                            <p className="text-xs opacity-70">Use Fingerprint or FaceID to unlock your vault.</p>
+                                                        </div>
+                                                        <label className="relative inline-flex items-center cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="sr-only peer" 
+                                                                checked={isBiometricEnrolled}
+                                                                onChange={async (e) => {
+                                                                    const checked = e.target.checked;
+                                                                    if (checked) {
+                                                                        const success = await enrollBiometric(activeDEK);
+                                                                        if (success) {
+                                                                            setIsBiometricEnrolled(true);
+                                                                            setFeedback({ type: 'success', msg: 'Biometrics enabled.' });
+                                                                        } else {
+                                                                            setFeedback({ type: 'error', msg: 'Failed to enable biometrics. Try again.' });
+                                                                        }
+                                                                    } else {
+                                                                        revokeBiometric();
+                                                                        setIsBiometricEnrolled(false);
+                                                                        setFeedback({ type: 'success', msg: 'Biometrics disabled.' });
+                                                                    }
+                                                                }}
+                                                            />
+                                                            <div className="w-11 h-6 bg-dark-bg/20 dark:bg-light-bg/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
+                                                        </label>
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>
