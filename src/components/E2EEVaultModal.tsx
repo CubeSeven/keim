@@ -3,13 +3,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Lock, KeyRound, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { deriveKEK, generateDEK, wrapKey, unwrapKey, generateSalt, bufferToBase64, base64ToBuffer } from '../lib/crypto';
-import { unlockWithBiometric, isBiometricAvailable } from '../lib/biometrics';
+import { unlockWithBiometric, isBiometricAvailable, revokeBiometric } from '../lib/biometrics';
 import { getCloudProvider } from '../lib/cloud/ProviderManager';
 import { syncNotesWithDrive, resetLocalSyncState } from '../lib/sync';
 import { KEYS } from '../lib/constants';
 
 export default function E2EEVaultModal() {
-    const { e2eeModalState, setE2eeModalState, setActiveDEK, setIsE2EESkipped, isBiometricEnrolled } = useAppStore();
+    const { e2eeModalState, setE2eeModalState, setActiveDEK, setIsE2EESkipped, isBiometricEnrolled, setIsBiometricEnrolled } = useAppStore();
     const { isOpen, mode } = e2eeModalState;
 
     const [password, setPassword] = useState('');
@@ -22,6 +22,10 @@ export default function E2EEVaultModal() {
     const isLockedOut = Date.now() < lockoutUntil;
 
     const [bioAvailable, setBioAvailable] = useState(false);
+    // isAutoTriggering: true from the moment the modal opens (bio enrolled) until the
+    // biometric attempt resolves — ensures the spinner shows immediately, no form flash.
+    const [isAutoTriggering, setIsAutoTriggering] = useState(false);
+
     useEffect(() => {
         isBiometricAvailable().then(setBioAvailable);
     }, []);
@@ -29,9 +33,16 @@ export default function E2EEVaultModal() {
     // Auto-trigger biometric when modal opens in unlock mode — single prompt, no double-auth
     useEffect(() => {
         if (isOpen && mode === 'unlock' && isBiometricEnrolled) {
+            setIsAutoTriggering(true);
             isBiometricAvailable().then(available => {
-                if (available) handleBioUnlock();
+                if (available) {
+                    handleBioUnlock();
+                } else {
+                    setIsAutoTriggering(false);
+                }
             });
+        } else {
+            setIsAutoTriggering(false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
@@ -91,6 +102,13 @@ export default function E2EEVaultModal() {
             
             // Store the wrapped JSON payload in local storage (never the raw DEK)
             localStorage.setItem(KEYS.ACTIVE_DEK, JSON.stringify(payload));
+
+            // IMPORTANT: Always revoke biometrics when the DEK is regenerated.
+            // The BIO_CREDENTIAL wraps the DEK at enrollment time — if setup runs
+            // again, a new DEK is created and the old biometric credential becomes invalid.
+            revokeBiometric();
+            setIsBiometricEnrolled(false);
+
             setActiveDEK(dek);
 
             // Reset local sync state so the sync engine performs a full cryptographic re-upload
@@ -169,12 +187,23 @@ export default function E2EEVaultModal() {
                 closeModal();
                 setTimeout(() => syncNotesWithDrive(), 100);
             } else {
-                setError('Biometric verification failed or was cancelled.');
+                // Issue #4: If credential was auto-revoked due to corruption, sync the store
+                if (!localStorage.getItem(KEYS.BIO_CREDENTIAL)) {
+                    setIsBiometricEnrolled(false);
+                }
+                setError('Biometric verification failed. Please use your password instead.');
             }
-        } catch (e) {
-            setError('Biometric error: ' + (e as Error).message);
+        } catch (e: any) {
+            // Issue #7: NotAllowedError = user cancelled the prompt. Show no error — just
+            // restore the form cleanly so the user can enter their password.
+            if (e?.name === 'NotAllowedError') {
+                setError(null);
+            } else {
+                setError('Biometric error. Please use your password instead.');
+            }
         } finally {
             setProcessing(false);
+            setIsAutoTriggering(false);
         }
     };
 
@@ -269,7 +298,7 @@ export default function E2EEVaultModal() {
 
                             {/* Actions */}
                             <div className="grid gap-2 pt-2">
-                                {processing ? (
+                                {processing || isAutoTriggering ? (
                                     <div className="flex items-center justify-center py-6 text-dark-bg dark:text-white">
                                         <l-mirage size="40" speed="2.5" color="currentColor" />
                                     </div>

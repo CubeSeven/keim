@@ -626,36 +626,71 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
                                                 )}
                                                 
                                                 {/* Biometric Toggle */}
-                                                {activeDEK && bioAvailable && (
-                                                    <div className="mt-4 pt-4 border-t border-light-ui dark:border-dark-ui flex items-center justify-between">
-                                                        <div>
-                                                            <p className="text-sm font-semibold">Biometric Unlock</p>
-                                                            <p className="text-xs opacity-70">Use Fingerprint or FaceID to unlock your vault.</p>
-                                                        </div>
-                                                        <label className="relative inline-flex items-center cursor-pointer">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                className="sr-only peer" 
-                                                                checked={isBiometricEnrolled}
-                                                                onChange={async (e) => {
-                                                                    const checked = e.target.checked;
-                                                                    if (checked) {
-                                                                        const success = await enrollBiometric(activeDEK);
-                                                                        if (success) {
-                                                                            setIsBiometricEnrolled(true);
-                                                                            setFeedback({ type: 'success', msg: 'Biometrics enabled.' });
-                                                                        } else {
-                                                                            setFeedback({ type: 'error', msg: 'Failed to enable biometrics. Try again.' });
-                                                                        }
-                                                                    } else {
-                                                                        revokeBiometric();
-                                                                        setIsBiometricEnrolled(false);
-                                                                        setFeedback({ type: 'success', msg: 'Biometrics disabled.' });
-                                                                    }
-                                                                }}
-                                                            />
-                                                            <div className="w-11 h-6 bg-dark-bg/20 dark:bg-light-bg/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
-                                                        </label>
+                                                {bioAvailable && (activeDEK || isBiometricEnrolled) && (
+                                                    <div className="mt-4 pt-4 border-t border-light-ui dark:border-dark-ui space-y-3">
+                                                        {/* Locked state: enrolled but vault locked — revoke only */}
+                                                        {isBiometricEnrolled && !activeDEK ? (
+                                                            <div className="flex items-center justify-between">
+                                                                <div>
+                                                                    <p className="text-sm font-semibold">Biometric Unlock</p>
+                                                                    <p className="text-xs opacity-70">Unlock the vault to manage biometric settings.</p>
+                                                                </div>
+                                                                <div className="flex flex-col items-end gap-1">
+                                                                    <div className="w-11 h-6 rounded-full bg-indigo-500 opacity-40 relative">
+                                                                        <div className="absolute top-[2px] right-[2px] w-5 h-5 bg-white border border-gray-300 rounded-full" />
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            revokeBiometric();
+                                                                            setIsBiometricEnrolled(false);
+                                                                            setFeedback({ type: 'success', msg: 'Biometrics disabled. You can re-enable it after unlocking your vault. Note: the passkey may remain in your device\'s credential manager and can be removed via device Settings → Passwords/Passkeys.' });
+                                                                        }}
+                                                                        className="text-[10px] text-red-500 hover:text-red-600 font-semibold transition-colors"
+                                                                    >
+                                                                        Disable anyway
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            /* Unlocked state: full toggle */
+                                                            <div className="flex items-center justify-between">
+                                                                <div>
+                                                                    <p className="text-sm font-semibold">Biometric Unlock</p>
+                                                                    <p className="text-xs opacity-70">Use Fingerprint or Face ID to unlock your vault.</p>
+                                                                    {!isBiometricEnrolled && (
+                                                                        <p className="text-[10px] text-indigo-500 mt-1 font-medium">Setup requires two biometric confirmations.</p>
+                                                                    )}
+                                                                </div>
+                                                                <label className="relative inline-flex items-center cursor-pointer">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        className="sr-only peer"
+                                                                        checked={isBiometricEnrolled}
+                                                                        onChange={async (e) => {
+                                                                            const checked = e.target.checked;
+                                                                            if (checked && activeDEK) {
+                                                                                const result = await enrollBiometric(activeDEK);
+                                                                                if (result.success) {
+                                                                                    setIsBiometricEnrolled(true);
+                                                                                    setFeedback({ type: 'success', msg: 'Biometrics enabled.' });
+                                                                                } else if (result.reason === 'prf_unsupported') {
+                                                                                    setFeedback({ type: 'error', msg: 'Your device or browser doesn\'t support the required security extension. Try Chrome on Android or desktop.' });
+                                                                                } else if (result.reason === 'cancelled') {
+                                                                                    // Silent — user chose to cancel
+                                                                                } else {
+                                                                                    setFeedback({ type: 'error', msg: 'Biometric setup failed. Please try again.' });
+                                                                                }
+                                                                            } else {
+                                                                                revokeBiometric();
+                                                                                setIsBiometricEnrolled(false);
+                                                                                setFeedback({ type: 'success', msg: 'Biometrics disabled. Note: the passkey may remain in your device\'s credential manager and can be removed via device Settings → Passwords/Passkeys.' });
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                    <div className="w-11 h-6 bg-dark-bg/20 dark:bg-light-bg/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
+                                                                </label>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
