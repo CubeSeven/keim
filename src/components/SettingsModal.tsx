@@ -116,6 +116,9 @@ export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChan
             console.error(e);
             const msg = (e as Error)?.message || 'Connection failed. Please try again.';
             setError(msg);
+            if (msg.includes('Dropbox App Key is not configured')) {
+                setShowCustomKey(true);
+            }
         } finally {
             setSyncing(false);
         }
