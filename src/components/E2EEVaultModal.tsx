@@ -26,6 +26,16 @@ export default function E2EEVaultModal() {
         isBiometricAvailable().then(setBioAvailable);
     }, []);
 
+    // Auto-trigger biometric when modal opens in unlock mode — single prompt, no double-auth
+    useEffect(() => {
+        if (isOpen && mode === 'unlock' && isBiometricEnrolled) {
+            isBiometricAvailable().then(available => {
+                if (available) handleBioUnlock();
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen]);
+
     const closeModal = () => {
         if (processing) return;
         setE2eeModalState({ isOpen: false, mode });
