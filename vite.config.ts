@@ -1,8 +1,7 @@
 /// <reference types="vitest" />
-import { defineConfig } from 'vitest/config'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
-import { VitePWA } from 'vite-plugin-pwa'
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -15,63 +14,10 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      workbox: {
-        cleanupOutdatedCaches: true,
-        clientsClaim: true,
-        skipWaiting: true,
-        navigateFallbackDenylist: [/^\/keim\/\?code=/, /^blob:/],
-        maximumFileSizeToCacheInBytes: 5242880,
-      },
-      manifest: {
-        name: 'Keim',
-        short_name: 'Keim',
-        description: 'Local-first, minimalist notes',
-        theme_color: '#FEFEFE',
-        background_color: '#FEFEFE',
-        display: 'standalone',
-        orientation: 'portrait-primary',
-        icons: [
-          {
-            src: 'keim_logo.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
-            purpose: 'any'
-          },
-          {
-            src: 'keim_logo.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable'
-          },
-          {
-            src: 'keim_logo.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any'
-          }
-        ]
-      }
-    })
   ],
   test: {
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
   },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes('@milkdown') || id.includes('prosemirror')) {
-            return 'vendor-milkdown';
-          }
-          if (id.includes('@codemirror') || id.includes('codemirror')) {
-            return 'vendor-codemirror';
-          }
-        }
-      }
-    }
-  }
-})
+});

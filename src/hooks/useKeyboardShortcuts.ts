@@ -3,11 +3,10 @@ import { useEffect } from 'react';
 interface KeyboardShortcutsProps {
     handleAddNote: () => void;
     handleAddFolder: () => void;
-    doSync: () => void;
-    selectedNoteId: number | null;
+    selectedNotePath: string | null;
 }
 
-export function useKeyboardShortcuts({ handleAddNote, handleAddFolder, doSync, selectedNoteId }: KeyboardShortcutsProps) {
+export function useKeyboardShortcuts({ handleAddNote, handleAddFolder, selectedNotePath }: KeyboardShortcutsProps) {
     useEffect(() => {
         const handleGlobalKeyDown = (e: KeyboardEvent) => {
             if (e.altKey) {
@@ -17,18 +16,15 @@ export function useKeyboardShortcuts({ handleAddNote, handleAddFolder, doSync, s
                 } else if (e.code === 'KeyF') {
                     e.preventDefault();
                     handleAddFolder();
-                } else if (e.code === 'KeyS') {
-                    e.preventDefault();
-                    doSync();
                 } else if (e.code === 'KeyD') {
                     e.preventDefault();
-                    if (selectedNoteId) {
-                        window.dispatchEvent(new CustomEvent('keim_prepare_delete', { detail: selectedNoteId }));
+                    if (selectedNotePath) {
+                        window.dispatchEvent(new CustomEvent('keim_prepare_delete', { detail: selectedNotePath }));
                     }
                 }
             }
         };
         window.addEventListener('keydown', handleGlobalKeyDown);
         return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-    }, [doSync, selectedNoteId, handleAddNote, handleAddFolder]);
+    }, [selectedNotePath, handleAddNote, handleAddFolder]);
 }

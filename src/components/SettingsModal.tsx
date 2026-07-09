@@ -1,813 +1,144 @@
-import { X, Moon, Sun, Monitor, CheckCircle2, AlertCircle, Download, Upload, Info, HardDrive, Database, Settings2, Palette, RefreshCw, Command, ShieldAlert, ShieldCheck } from 'lucide-react';
-import { syncNotesWithDrive, isDriveConnected, getLastSyncTime, authorizeDropbox, loginToDropbox, disconnectDropbox } from '../lib/sync';
-import { exportToFolder, importMarkdownFiles } from '../lib/export-import';
-import { APP_VERSION } from '../constants';
-import { KEYS } from '../lib/constants';
-import { isFileSystemSupported } from '../lib/vault';
+import { X, Moon, Sun, Monitor, Palette, Settings2, Info, FolderOpen, HardDrive } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { enrollBiometric, revokeBiometric, isBiometricAvailable } from '../lib/biometrics';
-import { motion, AnimatePresence } from 'framer-motion';
-import { mirage } from 'ldrs';
-mirage.register();
-
-const DropboxIcon = ({ className }: { className?: string }) => (
-    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-        <path d="M6 1.807L0 5.629l6 3.822 6.001-3.822L6 1.807zM18 1.807l-6 3.822 6 3.822 6-3.822-6-3.822zM0 13.274l6 3.822 6.001-3.822L6 9.452l-6 3.822zM18 9.452l-6 3.822 6 3.822 6-3.822-6-3.822zM6 18.371l6.001 3.822 6-3.822-6-3.822L6 18.371z" fill="currentColor" />
-    </svg>
-);
-
-const GoogleDriveIcon = ({ className }: { className?: string }) => (
-    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-        <path d="M12.01 1.485c-2.082 0-3.754.02-3.743.047.01.02 1.708 3.001 3.774 6.62l3.76 6.574h3.76c2.081 0 3.753-.02 3.742-.047-.005-.02-1.708-3.001-3.775-6.62l-3.76-6.574zm-4.76 1.73a789.828 789.861 0 0 0-3.63 6.319L0 15.868l1.89 3.298 1.885 3.297 3.62-6.335 3.618-6.33-1.88-3.287C8.1 4.704 7.255 3.22 7.25 3.214zm2.259 12.653-.203.348c-.114.198-.96 1.672-1.88 3.287a423.93 423.948 0 0 1-1.698 2.97c-.01.026 3.24.042 7.222.042h7.244l1.796-3.157c.992-1.734 1.85-3.23 1.906-3.323l.104-.167h-7.249z" fill="currentColor" />
-    </svg>
-);
-
-const OneDriveIcon = ({ className }: { className?: string }) => (
-    <svg viewBox="-1.132 4.727 34.057 21.467" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-        <path d="M12.202 11.193v-.001l6.718 4.024 4.003-1.685A6.477 6.477 0 0 1 25.5 13c.148 0 .294.007.439.016a10 10 0 0 0-18.041-3.013L8 10a7.96 7.96 0 0 1 4.202 1.193z" fill="#0364b8" />
-        <path d="M12.203 11.192A7.96 7.96 0 0 0 8 10l-.102.003a7.997 7.997 0 0 0-6.46 12.57L7.36 20.08l2.634-1.108 5.863-2.468 3.062-1.288z" fill="#0078d4" />
-        <path d="M25.939 13.016A6.577 6.577 0 0 0 25.5 13a6.477 6.477 0 0 0-2.576.532l-4.004 1.684 1.161.695 3.805 2.279 1.66.994 5.677 3.4a6.5 6.5 0 0 0-5.284-9.568z" fill="#1490df" />
-        <path d="M25.546 19.184l-1.66-.994-3.805-2.28-1.16-.694-3.063 1.288-5.863 2.468L7.36 20.08l-5.924 2.493A7.989 7.989 0 0 0 8 26h17.5a6.498 6.498 0 0 0 5.723-3.416z" fill="#28a8ea" />
-    </svg>
-);
-
-function ShortcutRow({ keys, label, description }: { keys: string[], label: string, description: string, iconOnly?: boolean }) {
-    return (
-        <div className="flex items-center justify-between p-3 rounded-xl bg-dark-bg/5 dark:bg-light-bg/5 border border-transparent hover:border-black/5 dark:hover:border-white/10 transition-all group shadow-sm">
-            <div className="space-y-0.5">
-                <p className="text-sm font-semibold">{label}</p>
-                <p className="text-xs opacity-50">{description}</p>
-            </div>
-            <div className="flex items-center gap-1.5">
-                {keys.map((k, i) => (
-                    <div key={`${k}-${i}`} className="flex items-center gap-1.5">
-                        <kbd className="min-w-[24px] h-6 flex items-center justify-center px-1.5 rounded bg-white dark:bg-white/10 border border-black/10 dark:border-white/20 shadow-sm text-[10px] font-bold font-mono uppercase tracking-tighter text-dark-bg dark:text-light-bg">
-                            {k}
-                        </kbd>
-                        {i < keys.length - 1 && <span className="text-[10px] opacity-30 font-bold text-dark-bg dark:text-light-bg">+</span>}
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-}
+import { APP_VERSION } from '../lib/constants';
+import { isFileSystemSupported, openVaultPicker, reloadTree } from '../lib/vault';
+import { useAppStore } from '../store';
 
 interface SettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
     theme: 'light' | 'dark' | 'system';
     setTheme: (theme: 'light' | 'dark' | 'system') => void;
-    onChangeVault?: () => Promise<void>;
-    onSwitchToBrowserStorage?: () => Promise<void>;
-    onSyncStatusChange?: (connected: boolean) => void;
-    onInstallPWA?: () => void;
-    initialTab?: 'general' | 'sync' | 'appearance' | 'shortcuts';
-    storageMode?: 'vault' | 'indexeddb' | 'unset';
+    initialTab?: 'general' | 'appearance';
 }
 
-import { useAppStore } from '../store';
-
-export default function SettingsModal({ isOpen, onClose, theme, setTheme, onChangeVault, onSwitchToBrowserStorage, onSyncStatusChange, onInstallPWA, initialTab = 'general', storageMode }: SettingsModalProps) {
-    const { activeDEK, setE2eeModalState, isBiometricEnrolled, setIsBiometricEnrolled } = useAppStore();
-    const [syncing, setSyncing] = useState(false);
-    const [connected, setConnected] = useState(false);
-    const [lastSync, setLastSync] = useState<number | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [pickingVault, setPickingVault] = useState(false);
-    const [exporting, setExporting] = useState(false);
-    const [importing, setImporting] = useState(false);
-    const [feedback, setFeedback] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
-
-    // UI State
-    const [activeTab, setActiveTab] = useState<'general' | 'sync' | 'appearance' | 'shortcuts'>('general');
-    const [bioAvailable, setBioAvailable] = useState(false);
-    const [customDbxKey, setCustomDbxKey] = useState(() => localStorage.getItem(KEYS.CUSTOM_DBX_KEY) || '');
-    const [showCustomKey, setShowCustomKey] = useState(false);
+export default function SettingsModal({ isOpen, onClose, theme, setTheme, initialTab = 'general' }: SettingsModalProps) {
+    const { setTree } = useAppStore();
+    const [activeTab, setActiveTab] = useState<'general' | 'appearance'>(initialTab);
+    const [picking, setPicking] = useState(false);
 
     useEffect(() => {
-        isBiometricAvailable().then(setBioAvailable);
-    }, []);
-
-    useEffect(() => {
-        if (isOpen) {
-            setActiveTab(initialTab);
-            setConnected(isDriveConnected());
-            setLastSync(getLastSyncTime());
-            setError(null);
-            setFeedback(null);
-        }
+        if (isOpen) setActiveTab(initialTab);
     }, [isOpen, initialTab]);
 
-    const handleConnect = async () => {
-        setError(null);
-        setSyncing(true);
+    const handleChangeFolder = async () => {
+        setPicking(true);
         try {
-            const isAuthorized = await authorizeDropbox();
-            if (!isAuthorized) {
-                await loginToDropbox();
-                return; // Redirecting to Dropbox
-            }
-            // Already authorized — run first sync
-            await syncNotesWithDrive();
-            setConnected(true);
-            setLastSync(Date.now());
-            onSyncStatusChange?.(true);
-        } catch (e) {
-            console.error(e);
-            const msg = (e as Error)?.message || 'Connection failed. Please try again.';
-            setError(msg);
-            if (msg.includes('Dropbox App Key is not configured')) {
-                setShowCustomKey(true);
+            const handle = await openVaultPicker();
+            if (handle) {
+                setTree(await reloadTree());
+                onClose();
             }
         } finally {
-            setSyncing(false);
+            setPicking(false);
         }
     };
 
-    const handleSyncNow = async () => {
-        setError(null);
-        setSyncing(true);
-        try {
-            await syncNotesWithDrive();
-            setLastSync(Date.now());
-        } catch (e) {
-            console.error(e);
-            const msg = (e as Error)?.message || 'Sync failed. Please try again.';
-            setError(msg);
-        } finally {
-            setSyncing(false);
-        }
-    };
-
-    const handleDisconnect = () => {
-        disconnectDropbox();
-        setConnected(false);
-        setLastSync(null);
-        setError(null);
-        onSyncStatusChange?.(false);
-    };
-
-    // Clear feedback on tab change
-    useEffect(() => {
-        setFeedback(null);
-    }, [activeTab]);
+    if (!isOpen) return null;
 
     return (
-        <AnimatePresence>
-            {isOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                    <motion.div
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="absolute inset-0 bg-dark-bg/50 backdrop-blur-sm"
-                        onClick={onClose}
-                        aria-hidden="true"
-                    />
-                    <motion.div 
-                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                        transition={{ duration: 0.2, ease: "easeOut" }}
-                        className="relative w-full max-w-2xl bg-light-bg dark:bg-dark-bg rounded-lg shadow-2xl border border-light-ui dark:border-dark-ui flex flex-col md:flex-row overflow-hidden"
-                    >
-                {/* Fixed Max-Height container for the modal content */}
-                <div className="flex flex-col md:flex-row w-full max-h-[85vh] md:max-h-[600px] md:h-[600px]">
-                    {/* Sidebar / Tabs Navigation */}
-                    <div className="w-full md:w-56 bg-light-ui/40 dark:bg-dark-ui/40 border-b md:border-b-0 md:border-r border-light-ui dark:border-dark-ui flex flex-col shrink-0 flex-none">
-                        <div className="p-4 border-b border-light-ui dark:border-dark-ui hidden md:block">
-                            <h2 className="font-semibold text-lg text-dark-bg dark:text-light-bg">Settings</h2>
-                        </div>
-                        <nav className="flex md:flex-col p-2 md:p-3 gap-1 overflow-x-auto md:overflow-visible">
-                            <button
-                                onClick={() => setActiveTab('general')}
-                                className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap
-                                    ${activeTab === 'general' ? 'bg-light-bg dark:bg-dark-bg text-dark-bg dark:text-light-bg shadow-sm' : 'text-dark-bg/70 dark:text-light-bg/70 hover:bg-light-bg/50 dark:hover:bg-dark-bg/50'}`}
-                            >
-                                <Settings2 size={16} /> General
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('sync')}
-                                className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap
-                                    ${activeTab === 'sync' ? 'bg-light-bg dark:bg-dark-bg text-dark-bg dark:text-light-bg shadow-sm' : 'text-dark-bg/70 dark:text-light-bg/70 hover:bg-light-bg/50 dark:hover:bg-dark-bg/50'}`}
-                            >
-                                <RefreshCw size={16} /> Cloud Sync
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('appearance')}
-                                className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap
-                                    ${activeTab === 'appearance' ? 'bg-light-bg dark:bg-dark-bg text-dark-bg dark:text-light-bg shadow-sm' : 'text-dark-bg/70 dark:text-light-bg/70 hover:bg-light-bg/50 dark:hover:bg-dark-bg/50'}`}
-                            >
-                                <Palette size={16} /> Appearance
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('shortcuts')}
-                                className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap
-                                    ${activeTab === 'shortcuts' ? 'bg-light-bg dark:bg-dark-bg text-dark-bg dark:text-light-bg shadow-sm' : 'text-dark-bg/70 dark:text-light-bg/70 hover:bg-light-bg/50 dark:hover:bg-dark-bg/50'}`}
-                            >
-                                <Command size={16} /> Shortcuts
-                            </button>
-                        </nav>
-                        <div className="mt-auto p-4 space-y-3">
-                           <div className="flex flex-col gap-1.5">
-                               <a 
-                                   href="https://github.com/CubeSeven/keim/issues" 
-                                   target="_blank" 
-                                   rel="noopener noreferrer"
-                                   className="flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400 bg-red-500/5 hover:bg-red-500/10 transition-colors border border-red-500/10"
-                               >
-                                   <AlertCircle size={14} /> Report a Bug
-                               </a>
-                               <a 
-                                   href="https://github.com/CubeSeven/keim" 
-                                   target="_blank" 
-                                   rel="noopener noreferrer"
-                                   className="flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider text-dark-bg/60 dark:text-light-bg/60 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 transition-colors border border-transparent hover:border-dark-bg/10 dark:hover:border-light-bg/10"
-                               >
-                                   <Command size={14} /> GitHub Project
-                               </a>
-                           </div>
-                           <p className="text-[10px] opacity-30 text-center font-mono uppercase tracking-widest">v{APP_VERSION}</p>
-                        </div>                    </div>
-
-                    {/* Content Area */}
-                    <div className="flex-1 flex flex-col relative overflow-hidden bg-light-bg dark:bg-dark-bg">
-                        <button
-                            onClick={onClose}
-                            className="absolute top-4 right-4 z-10 p-1.5 hover:bg-light-ui dark:hover:bg-dark-ui rounded-lg text-dark-bg dark:text-light-bg transition-colors"
-                        >
-                            <X size={20} />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fadein">
+            <div
+                className="absolute inset-0 bg-dark-bg/50 backdrop-blur-sm"
+                onClick={onClose}
+                aria-hidden="true"
+            />
+            <div className="relative w-full max-w-2xl bg-light-bg dark:bg-dark-bg rounded-lg shadow-2xl border border-light-ui dark:border-dark-ui flex flex-col md:flex-row overflow-hidden animate-scalein">
+                <div className="w-full md:w-56 bg-light-ui/40 dark:bg-dark-ui/40 border-b md:border-b-0 md:border-r border-light-ui dark:border-dark-ui flex flex-col shrink-0 flex-none">
+                    <div className="p-4 border-b border-light-ui dark:border-dark-ui hidden md:block">
+                        <h2 className="font-semibold text-lg text-dark-bg dark:text-light-bg">Settings</h2>
+                    </div>
+                    <nav className="flex md:flex-col p-2 md:p-3 gap-1 overflow-x-auto md:overflow-visible">
+                        <button onClick={() => setActiveTab('general')} className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'general' ? 'bg-light-bg dark:bg-dark-bg text-dark-bg dark:text-light-bg shadow-sm' : 'text-dark-bg/70 dark:text-light-bg/70 hover:bg-light-bg/50 dark:hover:bg-dark-bg/50'}`}>
+                            <Settings2 size={16} /> General
                         </button>
-
-                        <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 text-dark-bg dark:text-light-bg">
-
-                            {/* --- General Tab --- */}
-                            {activeTab === 'general' && (
-                                <div className="space-y-8 animate-in fade-in duration-200">
-                                    <div className="pb-2 border-b border-light-ui dark:border-dark-ui">
-                                        <h3 className="text-xl font-semibold">General Options</h3>
-                                    </div>
-
-                                    {/* Vault / Storage Section */}
-                                    {((onChangeVault && isFileSystemSupported()) || onSwitchToBrowserStorage) && (
-                                        <div className="space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <label className="text-sm font-bold opacity-50 uppercase tracking-widest">Storage Mode</label>
-                                                {!isFileSystemSupported() && (
-                                                    <span className="text-[10px] bg-dark-bg/10 dark:bg-light-bg/10 text-dark-bg dark:text-light-bg font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter">Limited Mode</span>
-                                                )}
-                                            </div>
-
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                {/* Local Disk Card */}
-                                                <div className={`relative p-5 rounded-2xl border-2 transition-all flex flex-col gap-4 ${storageMode === 'vault' ? 'border-dark-bg/20 dark:border-light-bg/20 bg-dark-bg/5 dark:bg-light-bg/5 shadow-md shadow-dark-bg/10 dark:shadow-light-bg/10' : 'border-light-ui dark:border-dark-ui bg-light-ui/20 dark:bg-dark-ui/20 opacity-80'}`}>
-                                                    <div className="flex items-center justify-between">
-                                                        <div className={`p-2.5 rounded-xl ${storageMode === 'vault' ? 'bg-dark-bg dark:bg-light-bg text-light-bg dark:text-dark-bg' : 'bg-dark-bg/5 dark:bg-light-bg/5 text-dark-bg dark:text-light-bg'}`}>
-                                                            <HardDrive size={22} />
-                                                        </div>
-                                                        {storageMode === 'vault' && (
-                                                            <div className="flex items-center gap-1.5 text-dark-bg dark:text-light-bg font-bold text-[10px] uppercase tracking-wider bg-dark-bg/5 dark:bg-light-bg/10 px-2 py-1 rounded-full border border-dark-bg/20 dark:border-light-bg/20">
-                                                                <CheckCircle2 size={12} /> Active
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <div className="space-y-1.5 flex-1">
-                                                        <h4 className="font-bold text-base leading-none">Local Disk (Vault)</h4>
-                                                        <p className="text-xs opacity-60 leading-relaxed">
-                                                            Saves notes as real <code className="bg-dark-bg/5 dark:bg-light-bg/10 px-1 rounded font-mono">.md</code> files. Best for Obsidian users or desktop.
-                                                        </p>
-                                                    </div>
-
-                                                    {storageMode !== 'vault' && onChangeVault && isFileSystemSupported() && (
-                                                        <button
-                                                            disabled={pickingVault}
-                                                            onClick={async () => {
-                                                                setPickingVault(true);
-                                                                try {
-                                                                    handleDisconnect();
-                                                                    await onChangeVault();
-                                                                    onClose();
-                                                                } finally {
-                                                                    setPickingVault(false);
-                                                                }
-                                                            }}
-                                                            className="w-full py-2.5 rounded-xl bg-dark-bg dark:bg-light-bg text-light-bg dark:text-dark-bg text-sm font-bold transition-all shadow-lg hover:opacity-90"
-                                                        >
-                                                            {pickingVault ? 'Choosing folder...' : 'Select Folder'}
-                                                        </button>
-                                                    )}
-                                                </div>
-
-                                                {/* Browser Storage Card */}
-                                                <div className={`relative p-5 rounded-2xl border-2 transition-all flex flex-col gap-4 ${storageMode === 'indexeddb' ? 'border-dark-bg/20 dark:border-light-bg/20 bg-dark-bg/5 dark:bg-light-bg/5 shadow-md shadow-dark-bg/10 dark:shadow-light-bg/10' : 'border-light-ui dark:border-dark-ui bg-light-ui/20 dark:bg-dark-ui/20 opacity-80'}`}>
-                                                    <div className="flex items-center justify-between">
-                                                        <div className={`p-2.5 rounded-xl ${storageMode === 'indexeddb' ? 'bg-dark-bg dark:bg-light-bg text-light-bg dark:text-dark-bg' : 'bg-dark-bg/5 dark:bg-light-bg/5 text-dark-bg dark:text-light-bg'}`}>
-                                                            <Database size={22} />
-                                                        </div>
-                                                        {storageMode === 'indexeddb' && (
-                                                            <div className="flex items-center gap-1.5 text-dark-bg dark:text-light-bg font-bold text-[10px] uppercase tracking-wider bg-dark-bg/5 dark:bg-light-bg/10 px-2 py-1 rounded-full border border-dark-bg/20 dark:border-light-bg/20">
-                                                                <CheckCircle2 size={12} /> Active
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <div className="space-y-1.5 flex-1">
-                                                        <h4 className="font-bold text-base leading-none">Browser Storage</h4>
-                                                        <p className="text-xs opacity-60 leading-relaxed">
-                                                            Zero setup. Notes are kept in your browser database and synced via Cloud (Dropbox).
-                                                        </p>
-                                                    </div>
-
-                                                    {storageMode !== 'indexeddb' && onSwitchToBrowserStorage && (
-                                                        <button
-                                                            onClick={async () => {
-                                                                handleDisconnect();
-                                                                await onSwitchToBrowserStorage();
-                                                                onClose();
-                                                            }}
-                                                            className="w-full py-2.5 rounded-xl bg-dark-bg dark:bg-light-bg text-light-bg dark:text-dark-bg text-sm font-bold hover:opacity-90 transition-all"
-                                                        >
-                                                            Switch to Browser
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Availability Warning Box if not supported */}
-                                            {!isFileSystemSupported() && (
-                                                <div className="flex items-start gap-4 p-4 rounded-xl bg-dark-bg/5 dark:bg-light-bg/5 border border-dark-bg/10 dark:border-light-bg/10 text-dark-bg dark:text-light-bg">
-                                                    <AlertCircle size={20} className="shrink-0 mt-0.5 opacity-70" />
-                                                    <div className="space-y-1">
-                                                        <p className="text-xs font-bold uppercase tracking-wide">Why is Local Disk unavailable?</p>
-                                                        <p className="text-xs opacity-90 leading-relaxed">
-                                                            This feature requires the <strong>File System Access API</strong>, currently only available on desktop browsers like Chrome, Edge, or Brave. It is not supported on mobile devices or browsers like Safari and Firefox for security reasons.
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {/* Advanced Utilities */}
-                                    {isFileSystemSupported() && (
-                                        <div className="space-y-3">
-                                            <label className="text-sm font-medium opacity-70 uppercase tracking-wider">Advanced</label>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                {storageMode !== 'vault' && (
-                                                    <button
-                                                        onClick={async () => {
-                                                            setExporting(true);
-                                                            try {
-                                                                const count = await exportToFolder();
-                                                                setFeedback({ type: 'success', msg: `Exported ${count} notes!` });
-                                                            } catch (e) {
-                                                                const msg = (e as Error)?.message || 'Export failed';
-                                                                setFeedback({ type: 'error', msg });
-                                                            } finally {
-                                                                setExporting(false);
-                                                            }
-                                                        }}
-                                                        disabled={exporting}
-                                                        className="flex items-center gap-3 p-3 rounded-lg border border-light-ui dark:border-dark-ui hover:bg-light-ui/50 dark:hover:bg-dark-ui/50 transition-colors text-left"
-                                                    >
-                                                        <div className="p-2 bg-dark-bg/5 dark:bg-light-bg/5 rounded-md shrink-0">
-                                                            <Download size={16} className="opacity-70" />
-                                                        </div>
-                                                        <div>
-                                                            <span className="text-sm font-semibold block">Export All</span>
-                                                            <span className="text-xs opacity-60">Save notes to folder</span>
-                                                        </div>
-                                                    </button>
-                                                )}
-    
-                                                <button
-                                                    onClick={() => {
-                                                        const input = document.createElement('input');
-                                                        input.type = 'file';
-                                                        input.multiple = true;
-                                                        input.accept = '.md';
-                                                        input.webkitdirectory = true;
-                                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                                        (input as any).directory = true;
-    
-                                                        input.onchange = async (e: Event) => {
-                                                            const target = e.target as HTMLInputElement;
-                                                            const fileList = Array.from(target.files || []) as File[];
-                                                            if (fileList.length === 0) return;
-                                                            setImporting(true);
-                                                            try {
-                                                                const fileData = fileList.map(f => ({
-                                                                    file: f,
-                                                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                                                    path: (f as any).webkitRelativePath || f.name
-                                                                }));
-                                                                const count = await importMarkdownFiles(fileData);
-                                                                setFeedback({ type: 'success', msg: `Imported ${count} notes!` });
-                                                            } catch (err) {
-                                                                const msg = (err as Error)?.message || 'Import failed';
-                                                                setFeedback({ type: 'error', msg });
-                                                            } finally {
-                                                                setImporting(false);
-                                                            }
-                                                        };
-                                                        input.click();
-                                                    }}
-                                                    disabled={importing}
-                                                    className={`flex items-center gap-3 p-3 rounded-lg border border-light-ui dark:border-dark-ui hover:bg-light-ui/50 dark:hover:bg-dark-ui/50 transition-colors text-left ${storageMode === 'vault' ? 'col-span-2' : ''}`}
-                                                >
-                                                    <div className="p-2 bg-dark-bg/5 dark:bg-light-bg/5 rounded-md shrink-0">
-                                                        <Upload size={16} className="opacity-70" />
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-sm font-semibold block">Import Files</span>
-                                                        <span className="text-xs opacity-60">Load .md files</span>
-                                                    </div>
-                                                </button>
-    
-                                                {onInstallPWA && (
-                                                    <button
-                                                        onClick={() => {
-                                                            onInstallPWA();
-                                                            onClose();
-                                                        }}
-                                                        className="col-span-2 flex items-center justify-between p-4 rounded-lg bg-dark-bg dark:bg-light-bg text-light-bg dark:text-dark-bg hover:opacity-90 transition-all shadow-lg group mt-2"
-                                                    >
-                                                        <div className="flex items-center gap-3">
-                                                            <Monitor size={20} className="group-hover:bounce" />
-                                                            <div className="text-left">
-                                                                <span className="text-sm font-bold tracking-wide block">Install Native App</span>
-                                                                <p className="text-xs opacity-90 font-medium">Use Keim Notes as a desktop app</p>
-                                                            </div>
-                                                        </div>
-                                                        <Download size={18} className="opacity-80" />
-                                                    </button>
-                                                )}
-                                            </div>
-                                            {feedback && (
-                                                <div className={`mt-3 p-2.5 rounded-lg text-xs font-medium flex items-center gap-2 ${feedback.type === 'success' ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-red-500/10 text-red-600 dark:text-red-400'}`}>
-                                                    {feedback.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-                                                    {feedback.msg}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* --- Sync Tab --- */}
-                            {activeTab === 'sync' && (
-                                <div className="space-y-8 animate-in fade-in duration-200">
-                                    <div className="pb-2 border-b border-light-ui dark:border-dark-ui">
-                                        <h3 className="text-xl font-semibold">Cloud Sync</h3>
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        {/* Dropbox Provider */}
-                                        <div className="border border-light-ui dark:border-dark-ui rounded-lg overflow-hidden shadow-sm">
-                                            <div className="p-4 bg-light-ui/30 dark:bg-dark-ui/30 flex items-center justify-between border-b border-light-ui dark:border-dark-ui">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-lg bg-[#0061FF]/10 flex items-center justify-center shrink-0">
-                                                        <DropboxIcon className="w-6 h-6 text-[#0061FF]" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-semibold text-sm">Dropbox</p>
-                                                        {connected ? (
-                                                            <p className="text-xs text-green-600 dark:text-green-500 font-medium flex items-center gap-1">
-                                                                <CheckCircle2 size={14} /> Connected
-                                                            </p>
-                                                        ) : (
-                                                            <p className="text-xs opacity-60">Not connected</p>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="p-4 bg-light-bg dark:bg-dark-bg flex flex-col gap-3">
-                                                {connected ? (
-                                                    <>
-                                                        <div className="flex justify-between items-center text-sm">
-                                                            <span className="opacity-70">Status</span>
-                                                            {lastSync ? (
-                                                                <span className="font-mono text-xs opacity-70">Last synced: {new Date(lastSync).toLocaleString()}</span>
-                                                            ) : (
-                                                                <span className="opacity-70">Waiting for sync</span>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex gap-2 mt-2">
-                                                            <button
-                                                                onClick={handleSyncNow}
-                                                                disabled={syncing}
-                                                                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-semibold bg-dark-bg text-light-bg dark:bg-light-bg dark:text-dark-bg hover:opacity-90 transition-all disabled:opacity-50"
-                                                            >
-                                                                {syncing ? <l-mirage size="18" speed="2.5" color="currentColor" /> : <RefreshCw size={16} />}
-                                                                {syncing ? 'Syncing…' : 'Sync Now'}
-                                                            </button>
-                                                            <button
-                                                                onClick={handleDisconnect}
-                                                                className="px-3 py-2 rounded-md text-sm font-medium text-red-500 bg-red-500/10 hover:bg-red-500/20 transition-all"
-                                                                title="Disconnect Dropbox"
-                                                            >
-                                                                Disconnect
-                                                            </button>
-                                                        </div>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <p className="text-sm opacity-80 mb-2">Connect your Dropbox account to automatically backup and sync your notes across devices.</p>
-                                                        <button
-                                                            onClick={handleConnect}
-                                                            disabled={syncing}
-                                                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-semibold bg-[#0061FF] text-white hover:bg-[#0051d6] transition-all disabled:opacity-50"
-                                                        >
-                                                            {syncing ? <l-mirage size="20" speed="2.5" color="currentColor" /> : <DropboxIcon className="w-5 h-5" />}
-                                                            {syncing ? 'Connecting…' : 'Connect with Dropbox'}
-                                                        </button>
-                                                    </>
-                                                )}
-                                                {error && (
-                                                    <div className="flex items-start gap-2 bg-red-500/10 text-red-600 dark:text-red-400 p-2.5 rounded-lg text-xs font-medium mt-2">
-                                                        <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                                                        <p>{error}</p>
-                                                    </div>
-                                                )}
-                                                {!connected && (
-                                                    <div className="mt-2 text-center">
-                                                        <button 
-                                                            onClick={() => setShowCustomKey(!showCustomKey)}
-                                                            className="text-[10px] uppercase tracking-wider font-bold opacity-50 hover:opacity-100 transition-opacity"
-                                                        >
-                                                            {showCustomKey ? 'Hide Custom Key Options' : 'Missing App Key?'}
-                                                        </button>
-                                                        {showCustomKey && (
-                                                            <div className="mt-3 p-3 bg-dark-bg/5 dark:bg-light-bg/5 rounded-lg text-left space-y-2 border border-dark-bg/10 dark:border-light-bg/10">
-                                                                <label className="text-xs font-semibold opacity-80 block">Custom Dropbox App Key</label>
-                                                                <input 
-                                                                    type="text" 
-                                                                    placeholder="Enter your Dropbox App Key"
-                                                                    value={customDbxKey}
-                                                                    onChange={(e) => {
-                                                                        const val = e.target.value.trim();
-                                                                        setCustomDbxKey(val);
-                                                                        if (val) {
-                                                                            localStorage.setItem(KEYS.CUSTOM_DBX_KEY, val);
-                                                                        } else {
-                                                                            localStorage.removeItem(KEYS.CUSTOM_DBX_KEY);
-                                                                        }
-                                                                    }}
-                                                                    className="w-full bg-light-bg dark:bg-dark-bg border border-light-ui dark:border-dark-ui rounded text-xs p-2 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
-                                                                />
-                                                                <p className="text-[10px] opacity-60 leading-relaxed">
-                                                                    If the App Key wasn't baked into this build, provide one here. It will be saved locally on this device.
-                                                                </p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        {/* Google Drive Provider (Coming Soon) */}
-                                        <div className="border border-light-ui dark:border-dark-ui rounded-lg overflow-hidden shadow-sm opacity-60 grayscale cursor-not-allowed group">
-                                            <div className="p-4 bg-light-ui/30 dark:bg-dark-ui/30 flex items-center justify-between border-b border-light-ui dark:border-dark-ui">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
-                                                        <GoogleDriveIcon className="w-6 h-6 text-emerald-600" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-semibold text-sm">Google Drive</p>
-                                                        <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mt-0.5">Coming Soon</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="p-4 bg-light-bg dark:bg-dark-bg">
-                                                <button disabled className="w-full py-2.5 rounded-md text-sm font-semibold bg-light-ui dark:bg-dark-ui text-dark-bg/50 dark:text-light-bg/50 cursor-not-allowed">
-                                                    Not Available
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* Security & Encryption Section */}
-                                        <div className="border border-light-ui dark:border-dark-ui rounded-lg overflow-hidden shadow-sm mt-8">
-                                            <div className="p-4 bg-light-ui/30 dark:bg-dark-ui/30 flex items-center justify-between border-b border-light-ui dark:border-dark-ui">
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${activeDEK ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'}`}>
-                                                        {activeDEK ? <ShieldCheck size={24} /> : <ShieldAlert size={24} />}
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-semibold text-sm">End-to-End Encryption</p>
-                                                        {activeDEK ? (
-                                                            <p className="text-xs text-emerald-600 dark:text-emerald-500 font-medium flex items-center gap-1 mt-0.5">
-                                                                <CheckCircle2 size={14} /> Active & Secured
-                                                            </p>
-                                                        ) : (
-                                                            <p className="text-xs opacity-60 mt-0.5">Not Protected</p>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="p-4 bg-light-bg dark:bg-dark-bg">
-                                                <p className="text-sm opacity-80 mb-3">
-                                                    {activeDEK 
-                                                        ? 'Your vault is shielded by military-grade AES-256 encryption. Only you hold the keys to read your data.'
-                                                        : 'Secure your vault notes before they leave your device. Your cloud provider will never be able to read your files.'}
-                                                </p>
-                                                {!activeDEK && connected && (
-                                                    <button
-                                                        onClick={() => {
-                                                            setE2eeModalState({ isOpen: true, mode: 'setup' });
-                                                            onClose();
-                                                        }}
-                                                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-semibold bg-indigo-500 text-white hover:bg-indigo-600 shadow-sm transition-all"
-                                                    >
-                                                        <ShieldAlert size={18} /> Enable Encryption Now
-                                                    </button>
-                                                )}
-                                                {!activeDEK && !connected && (
-                                                    <button disabled className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-semibold bg-light-ui dark:bg-dark-ui text-dark-bg/50 dark:text-light-bg/50 cursor-not-allowed">
-                                                        Connect to a Cloud Provider First
-                                                    </button>
-                                                )}
-                                                
-                                                {/* Biometric Toggle */}
-                                                {bioAvailable && (activeDEK || isBiometricEnrolled) && (
-                                                    <div className="mt-4 pt-4 border-t border-light-ui dark:border-dark-ui space-y-3">
-                                                        {/* Locked state: enrolled but vault locked — revoke only */}
-                                                        {isBiometricEnrolled && !activeDEK ? (
-                                                            <div className="flex items-center justify-between">
-                                                                <div>
-                                                                    <p className="text-sm font-semibold">Biometric Unlock</p>
-                                                                    <p className="text-xs opacity-70">Unlock the vault to manage biometric settings.</p>
-                                                                </div>
-                                                                <div className="flex flex-col items-end gap-1">
-                                                                    <div className="w-11 h-6 rounded-full bg-indigo-500 opacity-40 relative">
-                                                                        <div className="absolute top-[2px] right-[2px] w-5 h-5 bg-white border border-gray-300 rounded-full" />
-                                                                    </div>
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            revokeBiometric();
-                                                                            setIsBiometricEnrolled(false);
-                                                                            setFeedback({ type: 'success', msg: 'Biometrics disabled. You can re-enable it after unlocking your vault. Note: the passkey may remain in your device\'s credential manager and can be removed via device Settings → Passwords/Passkeys.' });
-                                                                        }}
-                                                                        className="text-[10px] text-red-500 hover:text-red-600 font-semibold transition-colors"
-                                                                    >
-                                                                        Disable anyway
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            /* Unlocked state: full toggle */
-                                                            <div className="flex items-center justify-between">
-                                                                <div>
-                                                                    <p className="text-sm font-semibold">Biometric Unlock</p>
-                                                                    <p className="text-xs opacity-70">Use Fingerprint or Face ID to unlock your vault.</p>
-                                                                    {!isBiometricEnrolled && (
-                                                                        <p className="text-[10px] text-indigo-500 mt-1 font-medium">Setup requires two biometric confirmations.</p>
-                                                                    )}
-                                                                </div>
-                                                                <label className="relative inline-flex items-center cursor-pointer">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        className="sr-only peer"
-                                                                        checked={isBiometricEnrolled}
-                                                                        onChange={async (e) => {
-                                                                            const checked = e.target.checked;
-                                                                            if (checked && activeDEK) {
-                                                                                const result = await enrollBiometric(activeDEK);
-                                                                                if (result.success) {
-                                                                                    setIsBiometricEnrolled(true);
-                                                                                    setFeedback({ type: 'success', msg: 'Biometrics enabled.' });
-                                                                                } else if (result.reason === 'prf_unsupported') {
-                                                                                    setFeedback({ type: 'error', msg: 'Your device or browser doesn\'t support the required security extension. Try Chrome on Android or desktop.' });
-                                                                                } else if (result.reason === 'cancelled') {
-                                                                                    // Silent — user chose to cancel
-                                                                                } else {
-                                                                                    setFeedback({ type: 'error', msg: 'Biometric setup failed. Please try again.' });
-                                                                                }
-                                                                            } else {
-                                                                                revokeBiometric();
-                                                                                setIsBiometricEnrolled(false);
-                                                                                setFeedback({ type: 'success', msg: 'Biometrics disabled. Note: the passkey may remain in your device\'s credential manager and can be removed via device Settings → Passwords/Passkeys.' });
-                                                                            }
-                                                                        }}
-                                                                    />
-                                                                    <div className="w-11 h-6 bg-dark-bg/20 dark:bg-light-bg/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
-                                                                </label>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        {/* OneDrive Provider (Coming Soon) */}
-                                        <div className="border border-light-ui dark:border-dark-ui rounded-lg overflow-hidden shadow-sm opacity-60 grayscale cursor-not-allowed">
-                                            <div className="p-4 bg-light-ui/30 dark:bg-dark-ui/30 flex items-center justify-between border-b border-light-ui dark:border-dark-ui">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-lg bg-[#0078D4]/10 flex items-center justify-center shrink-0">
-                                                        <OneDriveIcon className="w-6 h-6 text-[#0078D4]" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-semibold text-sm">OneDrive</p>
-                                                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#0078D4] mt-0.5">Coming Soon</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="p-4 bg-light-bg dark:bg-dark-bg">
-                                                <button disabled className="w-full py-2.5 rounded-md text-sm font-semibold bg-light-ui dark:bg-dark-ui text-dark-bg/50 dark:text-light-bg/50 cursor-not-allowed">
-                                                    Not Available
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* --- Appearance Tab --- */}
-                            {activeTab === 'appearance' && (
-                                <div className="space-y-8 animate-in fade-in duration-200">
-                                    <div className="pb-2 border-b border-light-ui dark:border-dark-ui">
-                                        <h3 className="text-xl font-semibold">Appearance</h3>
-                                    </div>
-
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <p className="text-sm font-semibold">Theme</p>
-                                            <p className="text-xs opacity-70">Select your preferred color scheme.</p>
-                                        </div>
-
-                                        {/* Compact Theme Toggle */}
-                                        <div className="flex items-center bg-light-ui dark:bg-dark-ui p-1 rounded-full border border-dark-bg/5 dark:border-light-bg/5">
-                                            <button
-                                                onClick={() => setTheme('light')}
-                                                title="Light Mode"
-                                                className={`p-2 rounded-full transition-all flex items-center justify-center ${theme === 'light' ? 'bg-light-bg text-dark-bg shadow-sm' : 'text-dark-bg/50 dark:text-light-bg/50 hover:text-dark-bg dark:hover:text-light-bg'}`}
-                                            >
-                                                <Sun size={16} />
-                                            </button>
-                                            <button
-                                                onClick={() => setTheme('system')}
-                                                title="System Theme"
-                                                className={`p-2 rounded-full transition-all flex items-center justify-center ${theme === 'system' ? 'bg-light-bg dark:bg-dark-bg text-dark-bg dark:text-light-bg shadow-sm' : 'text-dark-bg/50 dark:text-light-bg/50 hover:text-dark-bg dark:hover:text-light-bg'}`}
-                                            >
-                                                <Monitor size={16} />
-                                            </button>
-                                            <button
-                                                onClick={() => setTheme('dark')}
-                                                title="Dark Mode"
-                                                className={`p-2 rounded-full transition-all flex items-center justify-center ${theme === 'dark' ? 'bg-dark-bg text-light-bg shadow-sm' : 'text-dark-bg/50 dark:text-light-bg/50 hover:text-dark-bg dark:hover:text-light-bg'}`}
-                                            >
-                                                <Moon size={16} />
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                </div>
-                            )}
-
-                            {/* --- Shortcuts Tab --- */}
-                            {activeTab === 'shortcuts' && (
-                                <div className="space-y-8 animate-in fade-in duration-200">
-                                    <div className="pb-2 border-b border-light-ui dark:border-dark-ui">
-                                        <h3 className="text-xl font-semibold">Keyboard Shortcuts</h3>
-                                    </div>
-
-                                    <div className="grid gap-6">
-                                        <section className="space-y-3">
-                                            <h4 className="text-sm font-bold uppercase tracking-wider opacity-50">Global Actions</h4>
-                                            <div className="grid gap-2">
-                                                <ShortcutRow keys={['Alt', 'N']} label="New Note" description="Creates a new note (as sibling if selected)" />
-                                                <ShortcutRow keys={['Alt', 'F']} label="New Folder" description="Creates a new folder" />
-                                                <ShortcutRow keys={['Alt', 'K']} label="Universal Search" description="Open the command palette" />
-                                                <ShortcutRow keys={['Alt', 'S']} label="Force Sync" description="Trigger cloud sync manually" />
-                                            </div>
-                                        </section>
-
-                                        <section className="space-y-3">
-                                            <h4 className="text-sm font-bold uppercase tracking-wider opacity-50">Editor & Sidebar</h4>
-                                            <div className="grid gap-2">
-                                                <ShortcutRow keys={['Alt', 'D']} label="Delete Item" description="Prepare deletion for selected note/folder" />
-                                                <ShortcutRow keys={['Enter']} label="Confirm" description="Finalize deletion or rename" />
-                                                <ShortcutRow keys={['Esc']} label="Cancel" description="Close menus or cancel actions" />
-                                                <ShortcutRow keys={['Click']} label="Deselect" description="Click empty sidebar space to reset context" />
-                                            </div>
-                                        </section>
-
-                                        <div className="p-4 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-xl border border-indigo-500/10 flex gap-4 items-center">
-                                            <div className="w-10 h-10 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-500 shrink-0">
-                                                <Info size={20} />
-                                            </div>
-                                            <p className="text-xs opacity-70 leading-relaxed italic">
-                                                <strong>Tip:</strong> Keim Notes is designed to be keyboard-first. Using shortcuts can double your note-taking speed!
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                        </div>
+                        <button onClick={() => setActiveTab('appearance')} className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'appearance' ? 'bg-light-bg dark:bg-dark-bg text-dark-bg dark:text-light-bg shadow-sm' : 'text-dark-bg/70 dark:text-light-bg/70 hover:bg-light-bg/50 dark:hover:bg-dark-bg/50'}`}>
+                            <Palette size={16} /> Appearance
+                        </button>
+                    </nav>
+                    <div className="mt-auto p-4 space-y-3">
+                        <a href="https://github.com/CubeSeven/keim/issues" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400 bg-red-500/5 hover:bg-red-500/10 transition-colors border border-red-500/10">
+                            <Info size={14} /> Report a Bug
+                        </a>
+                        <a href="https://github.com/CubeSeven/keim" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider text-dark-bg/60 dark:text-light-bg/60 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 transition-colors border border-transparent hover:border-dark-bg/10 dark:hover:border-light-bg/10">
+                            GitHub Project
+                        </a>
+                        <p className="text-[10px] opacity-30 text-center font-mono uppercase tracking-widest">v{APP_VERSION}</p>
                     </div>
                 </div>
-            </motion.div>
+
+                <div className="flex-1 flex flex-col relative overflow-hidden bg-light-bg dark:bg-dark-bg">
+                    <button onClick={onClose} className="absolute top-4 right-4 z-10 p-1.5 hover:bg-light-ui dark:hover:bg-dark-ui rounded-lg text-dark-bg dark:text-light-bg transition-colors">
+                        <X size={20} />
+                    </button>
+                    <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 text-dark-bg dark:text-light-bg">
+                        {activeTab === 'general' && (
+                            <div className="space-y-8 animate-fadein">
+                                <div className="pb-2 border-b border-light-ui dark:border-dark-ui">
+                                    <h3 className="text-xl font-semibold">General Options</h3>
+                                </div>
+                                <div className="space-y-4">
+                                    <label className="text-sm font-bold opacity-50 uppercase tracking-widest">Storage</label>
+                                    <div className="relative p-5 rounded-2xl border-2 border-dark-bg/20 dark:border-light-bg/20 bg-dark-bg/5 dark:bg-light-bg/5 shadow-md shadow-dark-bg/10 dark:shadow-light-bg/10 flex flex-col gap-4">
+                                        <div className="flex items-center justify-between">
+                                            <div className="p-2.5 rounded-xl bg-dark-bg dark:bg-light-bg text-light-bg dark:text-dark-bg">
+                                                <HardDrive size={22} />
+                                            </div>
+                                            <div className="flex items-center gap-1.5 text-dark-bg dark:text-light-bg font-bold text-[10px] uppercase tracking-wider bg-dark-bg/5 dark:bg-light-bg/10 px-2 py-1 rounded-full border border-dark-bg/20 dark:border-light-bg/20">
+                                                Active
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1.5 flex-1">
+                                            <h4 className="font-bold text-base leading-none">Local Disk (Vault)</h4>
+                                            <p className="text-xs opacity-60 leading-relaxed">
+                                                Your notes are saved as real <code className="bg-dark-bg/5 dark:bg-light-bg/10 px-1 rounded font-mono">.md</code> files in the folder you chose.
+                                            </p>
+                                            <p className="text-[11px] leading-relaxed text-indigo-600/80 dark:text-indigo-400/80 flex items-start gap-1.5 pt-0.5">
+                                                <span className="font-semibold shrink-0">Sync:</span>
+                                                <span>To sync across devices, pick a vault folder inside your Google Drive, Dropbox, iCloud, or OneDrive folder — your notes sync automatically with no setup in Keim.</span>
+                                            </p>
+                                        </div>
+                                        {isFileSystemSupported() && (
+                                            <button
+                                                disabled={picking}
+                                                onClick={handleChangeFolder}
+                                                className="w-full py-2.5 rounded-xl bg-dark-bg dark:bg-light-bg text-light-bg dark:text-dark-bg text-sm font-bold transition-all shadow-lg hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
+                                            >
+                                                <FolderOpen size={16} /> {picking ? 'Choosing…' : 'Change Folder'}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'appearance' && (
+                            <div className="space-y-8 animate-fadein">
+                                <div className="pb-2 border-b border-light-ui dark:border-dark-ui">
+                                    <h3 className="text-xl font-semibold">Appearance</h3>
+                                </div>
+                                <div className="space-y-4">
+                                    <label className="text-sm font-bold opacity-50 uppercase tracking-widest">Theme</label>
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {(['light', 'dark', 'system'] as const).map((t) => (
+                                            <button
+                                                key={t}
+                                                onClick={() => setTheme(t)}
+                                                className={`flex flex-col items-center gap-2 py-4 rounded-xl border-2 transition-all ${theme === t ? 'border-indigo-500 bg-indigo-500/5' : 'border-light-ui dark:border-dark-ui hover:border-dark-bg/30 dark:hover:border-light-bg/30'}`}
+                                            >
+                                                {t === 'light' && <Sun size={20} />}
+                                                {t === 'dark' && <Moon size={20} />}
+                                                {t === 'system' && <Monitor size={20} />}
+                                                <span className="text-xs font-semibold capitalize">{t}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
         </div>
-    )}
-</AnimatePresence>
-);
+    );
 }

@@ -1,34 +1,36 @@
 import type { StateCreator } from 'zustand';
+import type { VaultTree } from '../../lib/vault';
+import { buildWikiIndex } from '../../lib/wikilinks';
 import { KEYS } from '../../lib/constants';
 
 export interface NotesSlice {
-    selectedNoteId: number | null;
-    setSelectedNoteId: (id: number | null) => void;
-    // Explicitly stored path, allowing us to resurrect selections effectively
+    // In-memory mirror of the vault folder (source of truth is disk)
+    tree: VaultTree;
+    setTree: (tree: VaultTree) => void;
+
+    // title -> note path index (for wikilinks)
+    wikiIndex: Map<string, string>;
+
+    // Currently open note (identified by its .md path)
     selectedNotePath: string | null;
     setSelectedNotePath: (path: string | null) => void;
 
-    // The folder that is currently active/open in the sidebar (used for context-aware creation)
-    selectedFolderId: number | null;
-    setSelectedFolderId: (id: number | null) => void;
+    // Folder context for creating new notes
+    selectedFolderPath: string | null;
+    setSelectedFolderPath: (path: string | null) => void;
 
-    selectedTag: string | null;
-    setSelectedTag: (tag: string | null) => void;
+    // Local save status (drives the sidebar footer indicator)
+    saving: boolean;
+    setSaving: (saving: boolean) => void;
+    lastSavedTime: number | null;
+    setLastSavedTime: (t: number | null) => void;
 }
 
 export const createNotesSlice: StateCreator<NotesSlice> = (set) => ({
-    selectedNoteId: (() => {
-        const savedId = localStorage.getItem('keim_selected_note_id');
-        return savedId ? parseInt(savedId, 10) : null;
-    })(),
-    setSelectedNoteId: (selectedNoteId) => {
-        if (selectedNoteId !== null) {
-            localStorage.setItem(KEYS.SELECTED_NOTE_ID, selectedNoteId.toString());
-        } else {
-            localStorage.removeItem(KEYS.SELECTED_NOTE_ID);
-        }
-        set({ selectedNoteId });
-    },
+    tree: { notes: [], folders: [] },
+    setTree: (tree) => set({ tree, wikiIndex: buildWikiIndex(tree) }),
+
+    wikiIndex: new Map(),
 
     selectedNotePath: localStorage.getItem(KEYS.SELECTED_NOTE_PATH) || null,
     setSelectedNotePath: (selectedNotePath) => {
@@ -40,9 +42,11 @@ export const createNotesSlice: StateCreator<NotesSlice> = (set) => ({
         set({ selectedNotePath });
     },
 
-    selectedFolderId: null,
-    setSelectedFolderId: (selectedFolderId) => set({ selectedFolderId }),
+    selectedFolderPath: null,
+    setSelectedFolderPath: (selectedFolderPath) => set({ selectedFolderPath }),
 
-    selectedTag: null,
-    setSelectedTag: (selectedTag) => set({ selectedTag }),
+    saving: false,
+    setSaving: (saving) => set({ saving }),
+    lastSavedTime: null,
+    setLastSavedTime: (lastSavedTime) => set({ lastSavedTime }),
 });

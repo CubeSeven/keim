@@ -1,119 +1,136 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { ENABLE_SMART_PROPS } from '../constants';
-import { db, type NoteItem } from '../lib/db';
-import { NoteService } from '../lib/NoteService';
+import { useState } from 'react';
+import { type VaultNote, type VaultFolder, deleteNote, deleteFolder, moveNote, moveFolder, reloadTree } from '../lib/vault';
 import { useAppStore } from '../store';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-    Folder, FolderOpen, FileText, Plus, Trash2,
-    Database, Edit2, MoreVertical, Copy
-} from 'lucide-react';
+import { ChevronRight, ChevronDown, FileText, Folder, Trash2 } from 'lucide-react';
 
-interface SidebarNodeProps {
-    item: NoteItem & { children: Array<NoteItem> };
-    level: number;
-    onAddNote?: (parentId: number) => void;
-    onAddFolder?: (parentId: number) => void;
-    onDeleteItem?: (id: number) => void;
+export interface SidebarNodeData {
+    name: string;
+    type: 'note' | 'folder';
+    path: string;
+    children: SidebarNodeData[];
 }
 
-export default function SidebarNode({ item, level, onAddNote, onAddFolder, onDeleteItem }: SidebarNodeProps) {
-    const { selectedNoteId, setSelectedNoteId, setSidebarOpen, setSelectedFolderId } = useAppStore();
-    const [isOpen, setIsOpen] = useState(false);
+export function buildSidebarTree(folders: VaultFolder[], notes: VaultNote[]): SidebarNodeData[] {
+    const map = new Map<string, SidebarNodeData>();
+    [...folders].sort((a, b) => a.path.localeCompare(b.path)).forEach(f => {
+        map.set(f.path, { name: f.name, type: 'folder', path: f.path, children: [] });
+    });
 
-    const [contextMenu, setContextMenu] = useState<{ x: number, y: number } | null>(null);
+    const notesByParent = new Map<string, VaultNote[]>();
+    notes.forEach(n => {
+        const arr = notesByParent.get(n.parentPath) ?? [];
+        arr.push(n);
+        notesByParent.set(n.parentPath, arr);
+    });
 
-    const isSmartFolder = useLiveQuery(
-        () => item.type === 'folder' && ENABLE_SMART_PROPS ? db.smartSchemas.where({ folderId: item.id }).count().then(c => c > 0) : false, 
-        [item.id, item.type]
-    );
+    const addChildren = (node: SidebarNodeData, parentPath: string) => {
+        const childFolders = [...folders]
+            .filter(f => f.parentPath === parentPath)
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map(f => map.get(f.path)!)
+            .filter(Boolean);
+        const childNotes = (notesByParent.get(parentPath) ?? [])
+            .slice()
+            .sort((a, b) => a.title.localeCompare(b.title))
+            .map(n => ({ name: n.title, type: 'note' as const, path: n.path, children: [] as SidebarNodeData[] }));
+        childFolders.forEach(cf => addChildren(cf, cf.path));
+        node.children = [...childFolders, ...childNotes];
+    };
 
-    useEffect(() => {
-        const handleClickOutside = () => setContextMenu(null);
-        if (contextMenu) document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [contextMenu]);
+    const rootFolders = [...folders].filter(f => f.parentPath === '').sort((a, b) => a.name.localeCompare(b.name)).map(f => map.get(f.path)!);
+    rootFolders.forEach(f => addChildren(f, f.path));
+    const rootNotes = (notesByParent.get('') ?? []).slice().sort((a, b) => a.title.localeCompare(b.title)).map(n => ({ name: n.title, type: 'note' as const, path: n.path, children: [] as SidebarNodeData[] }));
+    const root = [...rootFolders, ...rootNotes];
+    return root;
+}
 
-    // Auto-expand if the selected note is a child of this folder
-    useEffect(() => {
-        if (item.type === 'folder' && selectedNoteId) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const hasSelectedDescendant = (node: any): boolean => {
-                if (node.id === selectedNoteId) return true;
-                return node.children?.some(hasSelectedDescendant) || false;
-            };
-            if (hasSelectedDescendant(item)) {
-                // eslint-disable-next-line react-hooks/set-state-in-effect
-                setIsOpen(true);
+// Returns true if `ancestorCandidate` is `child` itself or one of child's ancestors.
+function isDescendant(ancestorCandidate: string, child: string, tree: SidebarNodeData[]): boolean {
+    const find = (nodes: SidebarNodeData[]): boolean => {
+        for (const n of nodes) {
+            if (n.path === child) return true;
+            if (n.type === 'folder' && find(n.children)) return true;
+        }
+        return false;
+    };
+    // Walk up from child's parent chain to see if it meets ancestorCandidate
+    const childNode = (() => {
+        const walk = (nodes: SidebarNodeData[]): SidebarNodeData | null => {
+            for (const n of nodes) {
+                if (n.path === child) return n;
+                if (n.type === 'folder') {
+                    const r = walk(n.children);
+                    if (r) return r;
+                }
             }
-        }
-    }, [selectedNoteId, item]);
-
-    // Renaming state
-    const [isRenaming, setIsRenaming] = useState(false);
-    const [renameValue, setRenameValue] = useState(item.title);
-    const inputRef = useRef<HTMLInputElement>(null);
-
-
-
-    useEffect(() => {
-        const handleRename = (e: CustomEvent) => {
-            if (e.detail === item.id) setIsRenaming(true);
+            return null;
         };
-        window.addEventListener('keim_rename_node', handleRename as EventListener);
-        return () => window.removeEventListener('keim_rename_node', handleRename as EventListener);
-    }, [item.id]);
-
-    const handleDelete = useCallback(async () => {
-        await NoteService.removeItem(item);
-        onDeleteItem?.(item.id!);
-    }, [item, onDeleteItem]);
-
-
-
-    useEffect(() => {
-        if (isRenaming && inputRef.current) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            setRenameValue(item.title);
-            inputRef.current.focus();
-            inputRef.current.select();
-        }
-    }, [isRenaming, item.title]);
-
-    const handleAddChild = (e: React.MouseEvent, type: 'folder' | 'note') => {
-        e.stopPropagation();
-        setIsOpen(true);
-        if (type === 'note') onAddNote?.(item.id!);
-        else onAddFolder?.(item.id!);
+        return walk(tree);
+    })();
+    if (!childNode) return false;
+    // climb ancestors
+    let current = childNode;
+    const getParent = (path: string): SidebarNodeData | null => {
+        const parentPath = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+        const walk = (nodes: SidebarNodeData[]): SidebarNodeData | null => {
+            for (const n of nodes) {
+                if (n.path === parentPath) return n;
+                if (n.type === 'folder') {
+                    const r = walk(n.children);
+                    if (r) return r;
+                }
+            }
+            return null;
+        };
+        return walk(tree);
     };
+    while (current) {
+        if (current.path === ancestorCandidate) return true;
+        const parent = getParent(current.path);
+        if (!parent) break;
+        current = parent;
+    }
+    return false;
+}
 
-    const handleRenameSubmit = async () => {
-        setIsRenaming(false);
-        const newTitle = renameValue.trim();
-        if (newTitle && newTitle !== item.title) {
-            await NoteService.renameItem(item, newTitle);
-        } else {
-            setRenameValue(item.title);
-        }
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') handleRenameSubmit();
-        if (e.key === 'Escape') {
-            setIsRenaming(false);
-            setRenameValue(item.title);
-        }
-    };
-
-    // Drag and Drop Logic
+function Node({ node, level, tree }: { node: SidebarNodeData; level: number; tree: SidebarNodeData[] }) {
+    const { selectedNotePath, setSelectedNotePath, setSelectedFolderPath } = useAppStore();
+    const [expanded, setExpanded] = useState(true);
     const [dragOverKind, setDragOverKind] = useState<'before' | 'after' | 'inside' | null>(null);
     const [isDragging, setIsDragging] = useState(false);
 
+    const isActive = node.type === 'note' && node.path === selectedNotePath;
+
+    const handleSelect = () => {
+        if (node.type === 'folder') {
+            setExpanded(e => !e);
+            setSelectedFolderPath(node.path);
+        } else {
+            setSelectedNotePath(node.path);
+        }
+    };
+
+    const refresh = async () => {
+        const { setTree } = useAppStore.getState();
+        setTree(await reloadTree());
+    };
+
+    const handleDelete = async () => {
+        if (!confirm(`Delete "${node.name}"${node.type === 'folder' ? ' and all its contents' : ''}?`)) return;
+        try {
+            if (node.type === 'note') await deleteNote(node.path);
+            else await deleteFolder(node.path);
+            if (isActive) setSelectedNotePath(null);
+            await refresh();
+        } catch (e) {
+            console.error('Delete failed', e);
+        }
+    };
+
+    // --- Drag & drop ---
     const handleDragStart = (e: React.DragEvent) => {
-        if (item.id === undefined) return;
         e.stopPropagation();
-        e.dataTransfer.setData('text/plain', item.id.toString());
+        e.dataTransfer.setData('text/plain', node.path);
         e.dataTransfer.effectAllowed = 'move';
         setTimeout(() => setIsDragging(true), 0);
     };
@@ -123,8 +140,7 @@ export default function SidebarNode({ item, level, onAddNote, onAddFolder, onDel
         e.dataTransfer.dropEffect = 'move';
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         const y = e.clientY - rect.top;
-
-        if (item.type === 'folder') {
+        if (node.type === 'folder') {
             if (y < rect.height * 0.25) setDragOverKind('before');
             else if (y > rect.height * 0.75) setDragOverKind('after');
             else setDragOverKind('inside');
@@ -138,230 +154,105 @@ export default function SidebarNode({ item, level, onAddNote, onAddFolder, onDel
         e.preventDefault(); e.stopPropagation();
         const dropKind = dragOverKind;
         setDragOverKind(null);
+        const draggedPath = e.dataTransfer.getData('text/plain');
+        if (!draggedPath || draggedPath === node.path) return;
 
-        const draggedId = parseInt(e.dataTransfer.getData('text/plain'), 10);
-        if (Number.isNaN(draggedId) || draggedId === item.id) return;
+        const fullTree = tree;
 
-        const allItems = await db.items.toArray();
-        const draggedNode = allItems.find(i => i.id === draggedId);
-        if (!draggedNode) return;
-
-        // Prevent dropping parent into its own descendant to avoid loops
-        if (draggedNode.type === 'folder') {
-            let currentParent = item.id;
-            while (currentParent !== 0) {
-                if (currentParent === draggedId) return; // Disallowed
-                const parentNode = allItems.find(i => i.id === currentParent);
-                if (!parentNode) break;
-                currentParent = parentNode.parentId;
-            }
-        }
-
-        let targetParentId = item.parentId;
-        if (dropKind === 'inside' && item.type === 'folder') {
-            targetParentId = item.id!;
-        }
-
-        const siblings = allItems
-            .filter(i => i.parentId === targetParentId && !i.isDeleted && i.id !== draggedId)
-            .sort((a, b) => (a.order ?? a.updated_at ?? 0) - (b.order ?? b.updated_at ?? 0));
-
-        let newOrder = Date.now();
-        if (dropKind === 'inside' || siblings.length === 0) {
-            if (siblings.length > 0) newOrder = (siblings[siblings.length - 1].order ?? siblings[siblings.length - 1].updated_at) + 1000;
-        } else {
-            const itemIndex = siblings.findIndex(i => i.id === item.id);
-            if (itemIndex !== -1) {
-                if (dropKind === 'before') {
-                    if (itemIndex === 0) newOrder = (siblings[0].order ?? siblings[0].updated_at) - 1000;
-                    else newOrder = ((siblings[itemIndex - 1].order ?? 0) + (siblings[itemIndex].order ?? 0)) / 2;
-                } else if (dropKind === 'after') {
-                    if (itemIndex === siblings.length - 1) newOrder = (siblings[itemIndex].order ?? 0) + 1000;
-                    else newOrder = ((siblings[itemIndex].order ?? 0) + (siblings[itemIndex + 1].order ?? 0)) / 2;
+        // Preload node metadata from current tree
+        const findNode = (path: string, nodes: SidebarNodeData[] = fullTree): SidebarNodeData | null => {
+            for (const n of nodes) {
+                if (n.path === path) return n;
+                if (n.type === 'folder') {
+                    const r = findNode(path, n.children);
+                    if (r) return r;
                 }
-            } 
+            }
+            return null;
+        };
+        const dragged = findNode(draggedPath);
+        if (!dragged) return;
+
+        // Disallow dropping a folder into its own descendant (loop)
+        if (dragged.type === 'folder' && isDescendant(draggedPath, node.path, fullTree)) return;
+
+        let targetParentPath = node.path.includes('/') ? node.path.slice(0, node.path.lastIndexOf('/')) : '';
+        if (dropKind === 'inside' && node.type === 'folder') {
+            targetParentPath = node.path;
         }
 
-        await NoteService.moveItem(draggedNode, targetParentId, newOrder);
-        if (dropKind === 'inside') setIsOpen(true);
+        try {
+            if (dragged.type === 'note') {
+                const newPath = await moveNote(draggedPath, targetParentPath);
+                await refresh();
+                if (dropKind === 'inside') setExpanded(true);
+                if (newPath) setSelectedNotePath(newPath);
+            } else {
+                await moveFolder(draggedPath, targetParentPath);
+                await refresh();
+                if (dropKind === 'inside') setExpanded(true);
+            }
+        } catch (err) {
+            console.error('Move failed', err);
+        }
     };
 
-    const isSelected = selectedNoteId === item.id;
-    const paddingLeft = `${(level * 12) + 16}px`;
+    const handleDragEnd = (e: React.DragEvent) => {
+        e.stopPropagation();
+        setIsDragging(false);
+        setDragOverKind(null);
+    };
 
-    let selectedClasses = isSelected
-        ? 'bg-white/50 dark:bg-white/10 text-dark-bg dark:text-light-bg font-semibold ring-1 ring-black/5 dark:ring-white/10 shadow-sm'
-        : 'text-dark-bg/70 dark:text-light-bg/70 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 hover:text-dark-bg dark:hover:text-light-bg';
+    let rowClasses = isActive
+        ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+        : 'text-dark-bg/80 dark:text-light-bg/80 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5';
+    if (dragOverKind === 'inside') rowClasses += ' ring-1 ring-indigo-500/40 bg-indigo-500/5 z-10';
+    if (isDragging) rowClasses += ' opacity-40';
 
-    if (dragOverKind === 'inside') selectedClasses += ' ring-1 ring-dark-bg/20 dark:ring-light-bg/20 bg-dark-bg/5 dark:bg-light-bg/5 z-10';
-    if (isDragging) selectedClasses += ' opacity-40 grayscale';
+    const paddingLeft = `${level * 14 + 8}px`;
 
     return (
         <div>
             <div
-                className={`relative group flex items-center justify-between py-2 pr-2 mx-2 rounded-lg cursor-pointer select-none transition-all duration-200 ${selectedClasses}`}
+                className={`group relative flex items-center gap-1.5 pr-2 py-1.5 rounded-lg cursor-pointer transition-colors ${rowClasses}`}
                 style={{ paddingLeft }}
-                onClick={(e: React.MouseEvent) => { // Added React.MouseEvent type to 'e'
-                    if (isRenaming) return;
-                    if (contextMenu) { setContextMenu(null); e.stopPropagation(); return; }
-                    if (item.type === 'folder') {
-                        setIsOpen(!isOpen);
-                        setSelectedFolderId(item.id!);
-                    } else {
-                        setSelectedNoteId(item.id!);
-                        setSelectedFolderId(item.parentId);
-                        if (window.innerWidth < 768) setSidebarOpen(false);
-                    }
-                }}
-                onContextMenu={(e) => {
-                    e.preventDefault(); e.stopPropagation();
-                    setContextMenu({ x: e.clientX, y: Math.min(e.clientY, window.innerHeight - 200) });
-                }}
-                onContextMenuCapture={(e) => e.preventDefault()}
-                onDoubleClick={(e) => { e.stopPropagation(); setIsRenaming(true); }}
-                draggable={!isRenaming}
+                onClick={handleSelect}
+                draggable
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}
                 onDragLeave={(e) => { e.stopPropagation(); setDragOverKind(null); }}
                 onDrop={handleDrop}
-                onDragEnd={(e) => { e.stopPropagation(); setIsDragging(false); setDragOverKind(null); }}
+                onDragEnd={handleDragEnd}
             >
-                {dragOverKind === 'before' && <div className="absolute -top-[1.5px] right-2 h-[3px] bg-dark-bg/40 dark:bg-light-bg/40 rounded-full z-20 pointer-events-none" style={{ left: paddingLeft }} />}
-                {dragOverKind === 'after' && <div className="absolute -bottom-[1.5px] right-2 h-[3px] bg-dark-bg/40 dark:bg-light-bg/40 rounded-full z-20 pointer-events-none" style={{ left: paddingLeft }} />}
+                {dragOverKind === 'before' && <div className="absolute -top-[1.5px] left-2 right-2 h-[3px] bg-indigo-500/60 rounded-full z-20 pointer-events-none" />}
+                {dragOverKind === 'after' && <div className="absolute -bottom-[1.5px] left-2 right-2 h-[3px] bg-indigo-500/60 rounded-full z-20 pointer-events-none" />}
 
-                <div className="flex items-center gap-2 truncate flex-1 min-w-0 pointer-events-none">
-                    {item.icon ? <span className="text-base leading-none flex-shrink-0">{item.icon}</span> 
-                    : item.type === 'folder' ? (
-                        <div className="relative flex-shrink-0">
-                            <motion.div
-                                key={isOpen ? 'open' : 'closed'}
-                                initial={{ scale: 0.7, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 0.8 }}
-                                transition={{ duration: 0.15 }}
-                            >
-                                {isSmartFolder ? <Database size={16} /> : (isOpen ? <FolderOpen size={16} /> : <Folder size={16} />)}
-                            </motion.div>
-                        </div>
-                    ) : <FileText size={16} className="opacity-80 flex-shrink-0" />}
+                {node.type === 'folder' ? (
+                    <span className="shrink-0 text-dark-bg/40 dark:text-light-bg/40">
+                        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </span>
+                ) : <span className="w-[14px] shrink-0" />}
 
-                    {isRenaming ? (
-                        <input
-                            ref={inputRef}
-                            value={renameValue}
-                            onChange={e => setRenameValue(e.target.value)}
-                            onBlur={handleRenameSubmit}
-                            onKeyDown={handleKeyDown}
-                            onClick={e => e.stopPropagation()}
-                            className="bg-dark-bg/10 dark:bg-light-bg/10 text-dark-bg dark:text-light-bg px-1 py-0.5 rounded text-sm outline-none w-full min-w-[50px] pointer-events-auto"
-                        />
-                    ) : <span className="truncate text-sm" title={item.title}>{item.title}</span>}
-                </div>
+                {node.type === 'folder' ? <Folder size={15} className="shrink-0 opacity-70" /> : <FileText size={15} className="shrink-0 opacity-70" />}
 
-                {!isRenaming && (
-                    <button
-                        onClick={(e) => {
-                            e.preventDefault(); e.stopPropagation();
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            setContextMenu({ x: Math.min(rect.right - 200, window.innerWidth - 220), y: Math.min(rect.top + 20, window.innerHeight - 200) });
-                        }}
-                        className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 text-dark-bg/50 dark:text-light-bg/50 transition-opacity ml-2 shrink-0 md:opacity-0 group-hover:opacity-100 opacity-100 pointer-events-auto"
-                    >
-                        <MoreVertical size={16} />
+                <span className="flex-1 truncate text-sm select-none">{node.name}</span>
+
+                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={e => { e.stopPropagation(); handleDelete(); }} className="p-1 rounded hover:bg-red-500/10 text-red-500" title="Delete">
+                        <Trash2 size={12} />
                     </button>
-                )}
+                </div>
             </div>
 
-            {item.type === 'folder' && (
-                <AnimatePresence initial={false}>
-                    {isOpen && (
-                        <motion.div
-                            key="children"
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-                            style={{ overflow: 'hidden' }}
-                        >
-                            <AnimatePresence initial={false}>
-                                {item.children.map((child) => (
-                                    <motion.div
-                                        key={child.id}
-                                        initial={{ opacity: 0, x: -8 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        exit={{ opacity: 0, x: -8, height: 0 }}
-                                        transition={{ duration: 0.18, ease: 'easeOut' }}
-                                    >
-                                        <SidebarNode
-                                            item={child as NoteItem & { children: Array<NoteItem> }}
-                                            level={level + 1}
-                                            onAddNote={onAddNote}
-                                            onAddFolder={onAddFolder}
-                                            onDeleteItem={onDeleteItem}
-                                        />
-                                    </motion.div>
-                                ))}
-                            </AnimatePresence>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+            {node.type === 'folder' && expanded && (
+                <div>
+                    {node.children.map(child => (
+                        <Node key={child.path} node={child} level={level + 1} tree={tree} />
+                    ))}
+                </div>
             )}
-
-            <AnimatePresence>
-                {contextMenu && (
-                    <motion.div
-                        key="context-menu"
-                        initial={{ opacity: 0, scale: 0.92, y: -4 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.92, y: -4 }}
-                        transition={{ duration: 0.12, ease: 'easeOut' }}
-                        className="fixed z-[100] bg-light-bg/85 dark:bg-[#1a1a1f]/80 backdrop-blur-xl border border-black/5 dark:border-white/10 shadow-2xl rounded-xl py-1.5 w-52"
-                        style={{ top: contextMenu.y, left: contextMenu.x, transformOrigin: 'top left' }}
-                        onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}
-                    >
-                        {item.type === 'folder' && (
-                            <>
-                                <button className="w-full text-left px-3 py-2 hover:bg-dark-bg/5 flex items-center gap-2.5" 
-                                    onClick={(e) => { setContextMenu(null); handleAddChild(e, 'note'); }}>
-                                    <Plus size={14} className="opacity-70" /> Add Note
-                                </button>
-                                <button className="w-full text-left px-3 py-2 hover:bg-dark-bg/5 flex items-center gap-2.5" 
-                                    onClick={(e) => { setContextMenu(null); handleAddChild(e, 'folder'); }}>
-                                    <Folder size={14} className="opacity-70" /> Add Folder
-                                </button>
-                                {ENABLE_SMART_PROPS && (
-                                    <button className="w-full text-left px-3 py-2 hover:bg-dark-bg/5 flex items-center gap-2.5"
-                                        onClick={() => {
-                                            setContextMenu(null);
-                                            useAppStore.getState().setSmartPopupState({ isOpen: true, folderId: item.id, folderTitle: item.title });
-                                        }}>
-                                        <Database size={14} className="opacity-70" /> {isSmartFolder ? 'Edit Properties' : 'Make Smart'}
-                                    </button>
-                                )}
-                                <div className="h-px bg-light-border dark:bg-dark-border my-1" />
-                            </>
-                        )}
-                        {item.type === 'note' && (
-                            <button className="w-full text-left px-3 py-2 hover:bg-dark-bg/5 flex items-center gap-2.5" 
-                                onClick={async (e) => { 
-                                    e.stopPropagation(); 
-                                    setContextMenu(null); 
-                                    const newId = await NoteService.duplicateNote(item);
-                                    if (newId) setSelectedNoteId(newId);
-                                }}>
-                                <Copy size={14} className="opacity-70" /> Duplicate
-                            </button>
-                        )}
-                        <button className="w-full text-left px-3 py-2 hover:bg-dark-bg/5 flex items-center gap-2.5" 
-                            onClick={(e) => { e.stopPropagation(); setContextMenu(null); setIsRenaming(true); }}>
-                            <Edit2 size={14} className="opacity-70" /> Rename
-                        </button>
-                        <button className="w-full text-left px-3 py-2 hover:bg-red-500/10 flex items-center gap-2.5 text-red-600" 
-                            onClick={(e) => { e.stopPropagation(); setContextMenu(null); handleDelete(); }}>
-                            <Trash2 size={14} /> Delete
-                        </button>
-                    </motion.div>
-                )}
-            </AnimatePresence>
         </div>
     );
 }
+
+export default Node;

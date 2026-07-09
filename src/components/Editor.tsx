@@ -1,1004 +1,233 @@
-import { useEffect, useState, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db, getFullPath, getItemPath } from '../lib/db';
-import { triggerAutoSync } from '../lib/sync';
-import { getStorageMode, notePathFromTitle, writeNoteToVault } from '../lib/vault';
-import { updateSearchIndex } from '../lib/search';
-import { ENABLE_SMART_PROPS } from '../constants';
-import { parseYamlFrontmatter, serializeYamlFrontmatter } from '../lib/smartProps';
-import PropertiesHeader from './PropertiesHeader';
-
-import { Milkdown, MilkdownProvider, useEditor, useInstance } from '@milkdown/react';
-import { Crepe, CrepeFeature } from '@milkdown/crepe';
-const EmojiPicker = lazy(() => import('emoji-picker-react'));
-import { SmilePlus, X, Tag, Plus, Lock, ArrowRight, CloudDownload, Cloud } from 'lucide-react';
-import { mirage } from 'ldrs';
-mirage.register();
-import type { SyncStatus } from '../App';
-import { editorViewOptionsCtx, editorViewCtx, parserCtx } from '@milkdown/kit/core';
-import { Plugin, PluginKey } from '@milkdown/prose/state';
-import { TextSelection } from '@milkdown/prose/state';
-import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
-import { ProsemirrorAdapterProvider, useNodeViewFactory } from '@prosemirror-adapter/react';
-import { $view, $prose } from '@milkdown/kit/utils';
-import { remarkDirectivePlugin, remarkDirectiveFallbackPlugin, dashboardNode } from '../plugins/dashboardNode';
-import { DashboardNodeView } from '../plugins/DashboardNodeView';
-import { DashboardFolderPicker } from './DashboardFolderPicker';
-import { wikiLinkNode, wikiLinkRemarkPlugin, wikiLinkInputRule } from '../plugins/wikiLinks';
-import { WikiLinkView } from '../plugins/WikiLinkView';
-import { temporalChipNode, temporalRemarkPlugin, temporalInputRule } from '../plugins/temporalChips';
-import { TemporalChipView } from '../plugins/TemporalChipView';
-import { appLinkNode, appLinkRemarkPlugin } from '../plugins/appLinks';
-import { AppLinkView } from '../plugins/appLinks/AppLinkView';
-import { LinkPreview } from '../plugins/LinkPreview';
-import 'katex/dist/katex.min.css';
-import '@milkdown/crepe/theme/common/style.css';
-import '@milkdown/crepe/theme/frame.css';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { readNoteContent, writeNoteToVault, renameNote, reloadTree, updateWikilinksOnRename, parentPathOf, titleFromNotePath } from '../lib/vault';
+import { extractWikiLinks, resolveWikiLink } from '../lib/wikilinks';
+import { useAppStore } from '../store';
+import { Link2 } from 'lucide-react';
 
 interface EditorProps {
-    noteId: number;
-    isVaultLocked?: boolean;
-    onUnlockVault?: () => Promise<boolean>;
-    onSelectNote: (id: number) => void;
-    syncStatus?: SyncStatus;
-    lastSyncTime?: number | null;
+    notePath: string;
+    onSelectNote: (path: string | null) => void;
 }
 
-interface CrepeBodyProps {
-    content: string;
-    noteId: number;
-    onSave: (markdown: string) => void;
-    onSelectNote: (id: number) => void;
-}
-
-// Custom Prosemirror plugin to track when cursor is eligible for the slash menu (start of block)
-const slashCursorTrackerPlugin = $prose(() => new Plugin({
-    key: new PluginKey('SLASH_CURSOR_TRACKER'),
-    view: () => ({
-        update: (view) => {
-            const { selection } = view.state;
-            const isEligible = selection.empty && 
-                               selection.$from.parent.type.name === 'paragraph' && 
-                               selection.$from.parent.textContent.length === 0;
-            window.dispatchEvent(new CustomEvent('keim_slash_eligibility_changed', { detail: isEligible }));
-        }
-    })
-}));
-
-// Custom Prosemirror plugin to prevent link marks from extending when typing at the end of a link
-const linkCursorFixPlugin = $prose(() => new Plugin({
-    key: new PluginKey('LINK_CURSOR_FIX'),
-    appendTransaction: (transactions, oldState, newState) => {
-        // Only run if the selection changed
-        if (!transactions.some(tr => tr.selectionSet || tr.docChanged)) return;
-        if (!newState.selection.empty) return;
-        
-        const $pos = newState.selection.$from;
-        const nodeBefore = $pos.nodeBefore;
-        
-        if (nodeBefore && nodeBefore.isText) {
-            const linkMark = nodeBefore.marks.find(m => m.type.name === 'link');
-            if (linkMark) {
-                const nodeAfter = $pos.nodeAfter;
-                const isInsideLink = nodeAfter && nodeAfter.isText && nodeAfter.marks.some(m => m.type.name === 'link');
-                
-                // If we are at the very end of a link mark
-                if (!isInsideLink) {
-                    const tr = newState.tr;
-                    tr.removeStoredMark(linkMark.type);
-                    
-                    // If removeStoredMark changed storedMarks (i.e. it wasn't already excluded)
-                    if (tr.storedMarks && !tr.storedMarks.some(m => m.type.name === 'link')) {
-                        // Prevent infinite loops by checking if oldState already had this storedMark removed
-                        const oldStored = oldState.storedMarks;
-                        if (!oldStored || oldStored.some(m => m.type.name === 'link')) {
-                            return tr;
-                        }
-                    }
-                }
-            }
-        }
-        return undefined;
-    }
-}));
-
-// --- Module-level write-through buffer ---
-// Key: noteId, Value: latest markdown content
-// Synchronous — always up to date, never lost on unmount.
-const contentBuffer = new Map<number, string>();
-
-function CrepeBodyInner({ content, noteId, onSave, onSelectNote }: CrepeBodyProps) {
-    const onSaveRef = useRef(onSave);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const onSelectNoteRef = useRef((_id: number) => { });
-    const factory = useNodeViewFactory();
-    const [showFolderPicker, setShowFolderPicker] = useState(false);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pendingInsertRef = useRef<{ from: number; view: any } | null>(null);
-
-    useEffect(() => {
-        onSaveRef.current = onSave;
-    }, [onSave]);
-
-    useEffect(() => {
-        onSelectNoteRef.current = onSelectNote;
-    }, [onSelectNote]);
-
-    const [loading, get] = useInstance();
-
-    // Listen for seamless cloud sync replaces (instead of remounting the editor)
-    useEffect(() => {
-        const handleSyncReplace = (e: CustomEvent) => {
-            if (e.detail.noteId === noteId && !loading && get()) {
-                const editor = get();
-                // When we have new content from the cloud or "use cloud version",
-                // we gracefully replace the editor text without unmounting plugins
-                editor.action((ctx) => {
-                    const view = ctx.get(editorViewCtx);
-                    const parser = ctx.get(parserCtx);
-                    const doc = parser(e.detail.content);
-                    
-                    if (!doc) return;
-                    
-                    const state = view.state;
-                    let tr = state.tr.replaceWith(0, state.doc.content.size, doc.content);
-                    
-                    // Explicitly set selection to the start of the new document to avoid RangeError
-                    // if the previous selection is out of bounds in the newly generated document context
-                    tr = tr.setSelection(TextSelection.atStart(tr.doc));
-                    tr = tr.setMeta('addToHistory', false);
-                    view.dispatch(tr);
-                });
-            }
-        };
-        window.addEventListener('keim_editor_replace_content', handleSyncReplace as EventListener);
-        return () => window.removeEventListener('keim_editor_replace_content', handleSyncReplace as EventListener);
-    }, [noteId, loading, get]);
-
-    // Listen for the custom dashboard insert event from the slash menu
-    useEffect(() => {
-        const handler = (e: Event) => {
-            const { from, view } = (e as CustomEvent).detail;
-            pendingInsertRef.current = { from, view };
-            setShowFolderPicker(true);
-        };
-        window.addEventListener('keim-insert-dashboard', handler);
-        return () => window.removeEventListener('keim-insert-dashboard', handler);
-    }, []);
-
-    // Listen for slash menu trigger from Navigation Dock
-    useEffect(() => {
-        const handler = () => {
-            if (!loading && get()) {
-                const editor = get();
-                editor.action((ctx) => {
-                    const view = ctx.get(editorViewCtx);
-                    // Focus the editor if it isn't already focused
-                    if (!view.hasFocus()) {
-                        view.focus();
-                    }
-                    // Insert a '/' at the current cursor position
-                    const tr = view.state.tr.insertText('/');
-                    view.dispatch(tr);
-                });
-            }
-        };
-        window.addEventListener('keim_trigger_slash_menu', handler);
-        return () => window.removeEventListener('keim_trigger_slash_menu', handler);
-    }, [loading, get]);
-
-    const handleFolderPicked = (folderName: string) => {
-        const pending = pendingInsertRef.current;
-        if (pending) {
-            const { from, view } = pending;
-            const { state, dispatch } = view;
-            const nodeType = state.schema.nodes['dashboard'];
-            if (nodeType) {
-                const node = nodeType.create({ folder: folderName });
-                const insertPos = state.doc.resolve(from).start();
-                const tr = state.tr
-                    .deleteRange(insertPos, from)
-                    .insert(insertPos, node);
-                dispatch(tr);
-            }
-            pendingInsertRef.current = null;
-        }
-        setShowFolderPicker(false);
-    };
-
-    const initialBody = parseYamlFrontmatter(content).body;
-
-    useEditor(
-        (root) => {
-            const crepe = new Crepe({
-                root,
-                defaultValue: initialBody,
-                featureConfigs: {
-                    [CrepeFeature.BlockEdit]: {
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        buildMenu: (builder: any) => {
-                            const advancedGroup = builder.getGroup('advanced');
-                            if (advancedGroup) {
-                                advancedGroup.addItem('dashboard', {
-                                    label: 'Dashboard (Smart Folder)',
-                                    icon: `
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-  >
-    <g clip-path="url(#clip0_977_8078)">
-      <path
-        d="M20 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H20C21.1 21 22 20.1 22 19V5C22 3.9 21.1 3 20 3ZM20 5V8H5V5H20ZM15 19H10V10H15V19ZM5 10H8V19H5V10ZM17 19V10H20V19H17Z"
-      />
-    </g>
-    <defs>
-      <clipPath id="clip0_977_8078">
-        <rect width="24" height="24" />
-      </clipPath>
-    </defs>
-  </svg>
-`,
-                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                    onRun: (editorCtx: any) => {
-                                        const view = editorCtx.get(editorViewCtx);
-                                        const { from } = view.state.selection;
-                                        // Dispatch custom event so React can show the folder picker
-                                        window.dispatchEvent(new CustomEvent('keim-insert-dashboard', {
-                                            detail: { from, view }
-                                        }));
-                                    }
-                                });
-                            }
-                        }
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    } as any
-                }
-            });
-
-            let isFirstUpdate = true;
-
-    crepe.editor
-        .config((ctx) => {
-            // --- Android Double-Enter Fix ---
-            // Intercept Enter key on Android to prevent the browser from 
-            // inserting a native newline alongside Milkdown's handler.
-            ctx.update(editorViewOptionsCtx, (prev) => ({
-                ...prev,
-                handleKeyDown: (_view, event) => {
-                    const isAndroid = /Android/i.test(navigator.userAgent);
-                    if (isAndroid && event.key === 'Enter' && !event.shiftKey) {
-                        event.preventDefault(); // Stop native ghost newline
-                        // Let Milkdown's keymap handles it.
-                        return false; 
-                    }
-                    return false;
-                }
-            }));
-
-            ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
-                        // Prevent phantom saves on initial mount, but don't swallow user edits.
-                        // Milkdown sometimes formats the initial parsed markdown.
-                        if (isFirstUpdate) {
-                            isFirstUpdate = false;
-                            const cleanMarkdown = markdown.trim();
-                            const cleanBody = initialBody.trim();
-                            if (cleanMarkdown === cleanBody || cleanMarkdown === '') {
-                                return; // Ignore un-edited initialization
-                            }
-                        }
-                        
-                        // We must fetch the latest meta from the buffer or initialContent,
-                        // and append this new body to it!
-                        const currentFull = contentBuffer.get(noteId) ?? content;
-                        const { meta } = parseYamlFrontmatter(currentFull);
-                        const newFull = serializeYamlFrontmatter(meta, markdown);
-
-                        // 1. Synchronous buffer — NEVER lost, even on instant unmount
-                        contentBuffer.set(noteId, newFull);
-                        // 2. Debounced DB persist via parent callback
-                        onSaveRef.current(newFull);
-                    });
-                })
-                .use(remarkDirectivePlugin)
-                .use(remarkDirectiveFallbackPlugin)
-                .use(slashCursorTrackerPlugin)
-                .use(linkCursorFixPlugin)
-                .use(dashboardNode)
-                .use($view(dashboardNode.node, () => factory({ 
-                    component: () => <DashboardNodeView onSelectNote={(id) => onSelectNoteRef.current(id)} />,
-                    stopEvent: () => true, // Tell ProseMirror to completely ignore all DOM events inside this node
-                    ignoreMutation: () => true // Tell ProseMirror to ignore all DOM changes inside React
-                })))
-                .use(wikiLinkNode)
-                .use(wikiLinkRemarkPlugin)
-                .use(wikiLinkInputRule)
-                .use($view(wikiLinkNode.node, () => factory({
-                    component: () => <WikiLinkView onSelectNote={(id) => onSelectNoteRef.current(id)} />,
-                    stopEvent: () => true,
-                    ignoreMutation: () => true
-                })))
-                .use(temporalChipNode)
-                .use(temporalRemarkPlugin)
-                .use(temporalInputRule)
-                .use(appLinkNode)
-                .use(appLinkRemarkPlugin)
-                .use($view(temporalChipNode.node, () => factory({
-                    component: TemporalChipView,
-                    stopEvent: () => true,
-                    ignoreMutation: () => true
-                })))
-                .use($view(appLinkNode.node, () => factory({
-                    component: AppLinkView,
-                    stopEvent: () => true,
-                    ignoreMutation: () => true
-                })))
-                .use(listener);
-
-            return crepe;
-        },
-        [noteId]
-    );
-
-    // Pass latest prop safely to the adapter without breaking memoization
-    useEffect(() => {
-        // If we needed to access the parent's generic onSelectNote we would do it here
-    }, []);
-
-    return (
-        <>
-            <Milkdown />
-            {showFolderPicker && (
-                <DashboardFolderPicker
-                    onPick={handleFolderPicked}
-                    onClose={() => setShowFolderPicker(false)}
-                />
-            )}
-            <LinkPreview />
-        </>
-    );
-}
-
-function CrepeBody(props: CrepeBodyProps) {
-    return (
-        <ProsemirrorAdapterProvider>
-            <CrepeBodyInner {...props} />
-        </ProsemirrorAdapterProvider>
-    );
-}
-
-export default function Editor({ noteId, isVaultLocked, onUnlockVault, onSelectNote, syncStatus, lastSyncTime }: EditorProps) {
-    const note = useLiveQuery(() => db.items.get(noteId), [noteId]);
-    const noteContent = useLiveQuery(() => db.contents.get(noteId), [noteId]);
-    const smartSchema = useLiveQuery(() => 
-        (note?.parentId && ENABLE_SMART_PROPS) ? db.smartSchemas.where({ folderId: note.parentId }).first() : undefined,
-    [note?.parentId]);
+export default function Editor({ notePath, onSelectNote }: EditorProps) {
+    const [content, setContent] = useState('');
     const [title, setTitle] = useState('');
-    const saveTimeoutRef = useRef<number | null>(null);
-    // Conflict state: set when sync wants to overwrite a note the user is actively editing
-    const [conflictPending, setConflictPending] = useState(false);
-    // Toast: briefly shown after a non-conflicting cloud update
-    const [cloudUpdateToast, setCloudUpdateToast] = useState(false);
-    const cloudToastTimer = useRef<number | null>(null);
+    const [loading, setLoading] = useState(true);
+    const saveTimer = useRef<number | null>(null);
+    const contentRef = useRef('');
+    const titleRef = useRef('');
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-    // The content to seed the editor with comes from three sources, in priority order:
-    // 1. The synchronous in-memory buffer (user typed but DB not yet written)
-    // 2. The IndexedDB content (freshly loaded from DB)
-    // 3. null => still loading from DB (noteContent is undefined from useLiveQuery)
-    //
-    // We use a separate 'editorReady' flag to distinguish between
-    // "DB says empty string" (editorReady=true, content='') and
-    // "DB hasn't responded yet" (editorReady=false). This prevents the
-    // editor from flickering by only mounting once we have authoritative content.
-    const dbLoaded = noteContent !== undefined; // undefined = Dexie still loading
-    const initialContent = useMemo(() => {
-        const buffered = contentBuffer.get(noteId);
-        if (buffered !== undefined) return buffered;  // User typed — use buffer
-        if (!dbLoaded) return '';                     // Still loading — show empty skeleton
-        return noteContent?.content ?? '';            // DB authoritative result
-    }, [noteId, noteContent, dbLoaded]);
-    const editorReady = dbLoaded || contentBuffer.has(noteId);
+    // Wikilink autocomplete state
+    const [wikiQuery, setWikiQuery] = useState<string | null>(null); // null = not in a [[ context
+    const [wikiStart, setWikiStart] = useState(0);
+    const [wikiActive, setWikiActive] = useState(0);
 
-    const [showIconPicker, setShowIconPicker] = useState(false);
-    const pickerRef = useRef<HTMLDivElement>(null);
+    const setSaving = useAppStore(s => s.setSaving);
+    const setLastSavedTime = useAppStore(s => s.setLastSavedTime);
 
-    useEffect(() => {
-        const handleClickOutside = (e: MouseEvent) => {
-            if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
-                setShowIconPicker(false);
-            }
-        };
-        if (showIconPicker) {
-            document.addEventListener('mousedown', handleClickOutside);
+    const load = useCallback(async (path: string) => {
+        setLoading(true);
+        try {
+            const text = await readNoteContent(path);
+            contentRef.current = text;
+            setContent(text);
+            const t = titleFromNotePath(path);
+            titleRef.current = t;
+            setTitle(t);
+            setSaving(false);
+            setLastSavedTime(null);
+        } catch (e) {
+            console.error('Failed to read note', e);
+            contentRef.current = '';
+            setContent('');
+            setTitle(titleFromNotePath(path));
+        } finally {
+            setLoading(false);
         }
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [showIconPicker]);
+    }, []);
 
-    const handleIconChange = async (icon: string | null) => {
-        await db.items.update(noteId, { icon: icon === null ? undefined : icon, updated_at: Date.now() });
-        localStorage.setItem('keim_has_user_edits', 'true');
-        triggerAutoSync();
-        setShowIconPicker(false);
+    useEffect(() => { load(notePath); }, [notePath, load]);
+
+    const persist = useCallback((path: string, body: string) => {
+        setSaving(true);
+        window.clearTimeout(saveTimer.current ?? undefined);
+        saveTimer.current = window.setTimeout(async () => {
+            try {
+                await writeNoteToVault(path, body);
+                setSaving(false);
+                setLastSavedTime(Date.now());
+            } catch (e) {
+                console.error('Failed to save note', e);
+                setSaving(false);
+            }
+        }, 400);
+    }, []);
+
+    const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const v = e.target.value;
+        contentRef.current = v;
+        setContent(v);
+        setSaving(true);
+        persist(notePath, v);
+        detectWikiTrigger(e.target);
     };
 
-    const [showTagInput, setShowTagInput] = useState(false);
-    const [tagInputValue, setTagInputValue] = useState('');
-    const [uniqueTags, setUniqueTags] = useState<string[]>([]);
-    const [recentTags, setRecentTags] = useState<string[]>([]);
-    const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
-    const tagInputRef = useRef<HTMLInputElement>(null);
-    const tagContainerRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (showTagInput) {
-            db.items.filter(i => !i.isDeleted).toArray().then(items => {
-                // All unique tags for filtering
-                const tags = new Set<string>();
-                items.forEach(i => {
-                    if (i.tags) i.tags.forEach(t => tags.add(t));
-                });
-                setUniqueTags(Array.from(tags));
-
-                // Recent tags: based on last modified notes
-                const recent = new Set<string>();
-                const sortedItems = [...items].sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
-                for (const item of sortedItems) {
-                    if (item.tags) {
-                        item.tags.forEach(t => {
-                            if (recent.size < 5) recent.add(t);
-                        });
-                    }
-                    if (recent.size >= 5) break;
-                }
-                setRecentTags(Array.from(recent));
-            });
-        }
-    }, [showTagInput]);
-
-    const suggestedTags = useMemo(() => {
-        const cleanVal = tagInputValue.trim().replace(/^#/, '').toLowerCase().replace(/\s+/g, '-');
-        if (cleanVal.length > 0) {
-            return uniqueTags.filter(t => t.startsWith(cleanVal) && t !== cleanVal).slice(0, 5);
-        }
-        // If empty input, show recent tags
-        return recentTags;
-    }, [tagInputValue, uniqueTags, recentTags]);
-
-    useEffect(() => {
-        const handleClickOutside = (e: MouseEvent) => {
-            if (tagContainerRef.current && !tagContainerRef.current.contains(e.target as Node)) {
-                setShowTagInput(false);
-            }
-        };
-        if (showTagInput) {
-            document.addEventListener('mousedown', handleClickOutside);
-            setTimeout(() => tagInputRef.current?.focus(), 0);
-        }
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [showTagInput]);
-
-    const handleTagSubmit = async () => {
-        const newTag = tagInputValue.trim().replace(/^#/, '').toLowerCase().replace(/\s+/g, '-');
-        if (newTag && note) {
-            const currentTags = note.tags || [];
-            if (!currentTags.includes(newTag)) {
-                const newTags = [...currentTags, newTag];
-                await db.items.update(noteId, { tags: newTags, updated_at: Date.now() });
-                if (noteContent) {
-                    const allItems = await db.items.toArray();
-                    const fullPath = getFullPath(noteId, allItems);
-                    updateSearchIndex(noteId, note.title, noteContent.content, note.parentId, fullPath, note.icon, newTags);
-                }
-                localStorage.setItem('keim_has_user_edits', 'true');
-                triggerAutoSync();
-            }
-        }
-        setTagInputValue('');
-        setShowTagInput(false);
+    // Detect an active [[ ... ]] context to show autocomplete
+    const detectWikiTrigger = (el: HTMLTextAreaElement) => {
+        const pos = el.selectionStart ?? el.value.length;
+        const before = el.value.slice(0, pos);
+        const open = before.lastIndexOf('[[');
+        if (open === -1) { setWikiQuery(null); return; }
+        // must not already be closed
+        const between = before.slice(open + 2);
+        if (between.includes(']]')) { setWikiQuery(null); return; }
+        setWikiQuery(between);
+        setWikiStart(open);
+        setWikiActive(0);
     };
 
-    const handleAddTag = async (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setSelectedSuggestionIndex(prev => Math.min(prev + 1, suggestedTags.length - 1));
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            setSelectedSuggestionIndex(prev => Math.max(prev - 1, 0));
-        } else if ((e.key === 'Tab' || e.key === 'Enter') && suggestedTags.length > 0 && suggestedTags[selectedSuggestionIndex]) {
-            e.preventDefault();
-            setTagInputValue(suggestedTags[selectedSuggestionIndex]);
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            await handleTagSubmit();
-        } else if (e.key === 'Escape') {
-            setShowTagInput(false);
+    const commitTitle = useCallback(async () => {
+        const newTitle = titleRef.current.trim() || 'Untitled';
+        if (titleFromNotePath(notePath) === newTitle) return;
+        try {
+            const oldTitle = titleFromNotePath(notePath);
+            const newPath = await renameNote(notePath, newTitle);
+            await updateWikilinksOnRename(oldTitle, newTitle);
+            const { setTree } = useAppStore.getState();
+            setTree(await reloadTree());
+            useAppStore.getState().setSelectedNotePath(newPath);
+        } catch (e) {
+            console.error('Failed to rename note', e);
         }
+    }, [notePath]);
+
+    const wikiIndex = useAppStore(s => s.wikiIndex);
+    const linkedTitles = wikiQuery !== null
+        ? Array.from(wikiIndex.keys())
+            .filter(t => t.toLowerCase().includes(wikiQuery.toLowerCase()) && t !== titleFromNotePath(notePath))
+            .slice(0, 8)
+        : [];
+
+    const insertWikiLink = (targetTitle: string) => {
+        const el = textareaRef.current;
+        if (!el) return;
+        const pos = el.selectionStart ?? contentRef.current.length;
+        const start = wikiStart >= 0 ? wikiStart : pos - 2;
+        const before = contentRef.current.slice(0, start);
+        const after = contentRef.current.slice(pos);
+        const inserted = `[[${targetTitle}]]`;
+        const next = before + inserted + after;
+        contentRef.current = next;
+        setContent(next);
+        setWikiQuery(null);
+        const caret = (before + inserted).length;
+        requestAnimationFrame(() => {
+            el.focus();
+            el.setSelectionRange(caret, caret);
+        });
+        persist(notePath, next);
     };
 
-    const handleRemoveTag = async (tagToRemove: string) => {
-        if (note) {
-            const currentTags = note.tags || [];
-            const newTags = currentTags.filter(t => t !== tagToRemove);
-            await db.items.update(noteId, { tags: newTags, updated_at: Date.now() });
-            if (noteContent) {
-                const allItems = await db.items.toArray();
-                const fullPath = getFullPath(noteId, allItems);
-                updateSearchIndex(noteId, note.title, noteContent.content, note.parentId, fullPath, note.icon, newTags);
-            }
-            localStorage.setItem('keim_has_user_edits', 'true');
-            triggerAutoSync();
-        }
+    const linkedNotes = extractWikiLinks(contentRef.current)
+        .map(t => ({ title: t, path: resolveWikiLink(t, wikiIndex) }))
+        .filter((_, i, arr) => arr.findIndex(x => x.title === _.title) === i);
+
+    const openLinked = (path: string) => {
+        onSelectNote(path);
     };
 
-    // Re-mount editor when sync downloads new content for THIS specific note
-    useEffect(() => {
-        const handleSyncComplete = ((e: CustomEvent) => {
-            const downloadedIds = e.detail?.downloadedIds as number[] | undefined;
-            if (!downloadedIds || downloadedIds.includes(noteId)) {
-                // RACE CONDITION GUARD: If the user has unsaved pending edits, do NOT
-                // silently overwrite them. Show a conflict banner instead.
-                if (pendingSaveRef.current !== null) {
-                    setConflictPending(true);
-                    return;
-                }
-                
-                db.contents.get(noteId).then(contentObj => {
-                    const newContent = contentObj?.content || '';
-                    contentBuffer.set(noteId, newContent);
-                    window.dispatchEvent(new CustomEvent('keim_editor_replace_content', {
-                        detail: { noteId, content: newContent }
-                    }));
-                });
-
-                // Show a brief "Updated from cloud" toast for non-conflicting updates
-                if (cloudToastTimer.current) window.clearTimeout(cloudToastTimer.current);
-                setCloudUpdateToast(true);
-                cloudToastTimer.current = window.setTimeout(() => setCloudUpdateToast(false), 3000);
-            }
-        }) as EventListener;
-        window.addEventListener('keim_sync_complete', handleSyncComplete);
-
-        const handleNoteUpdated = ((e: CustomEvent) => {
-            const { noteId: editedId, newContent } = e.detail;
-            
-            console.log(`[Editor] Received keim_note_content_updated for note ${editedId}. Current active note is ${noteId}`);
-            
-            // Always update global buffer so if the user opens this note later, it's fresh.
-            // PropertiesHeader manages its own meta state by listening to the event directly.
-            contentBuffer.set(editedId, newContent);
-        }) as EventListener;
-        window.addEventListener('keim_note_content_updated', handleNoteUpdated);
-
-        return () => {
-            window.removeEventListener('keim_sync_complete', handleSyncComplete);
-            window.removeEventListener('keim_note_content_updated', handleNoteUpdated);
-        };
-    }, [noteId]);
-
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            if (note) {
-                setTitle(note.title);
-            } else {
-                setTitle('');
-            }
-        }, 0);
-        return () => clearTimeout(timer);
-    }, [note]);
-
-    const pendingSaveRef = useRef<string | null>(null);
-    // noteRef keeps a non-stale reference to `note` so cleanup functions can use it
-    const noteRef = useRef(note);
-    useEffect(() => { noteRef.current = note; }, [note]);
-
-    const persistContent = useCallback(async (markdown: string, noteItem: typeof note) => {
-        if (!noteItem) return;
-        await db.contents.put({ id: noteId, content: markdown });
-        await db.items.update(noteId, { updated_at: Date.now() });
-        const allItems = await db.items.toArray();
-        const fullPath = getFullPath(noteId, allItems);
-        updateSearchIndex(noteId, noteItem.title, markdown, noteItem.parentId, fullPath, noteItem.icon, noteItem.tags);
-        localStorage.setItem('keim_has_user_edits', 'true');
-        // NOTE: No live vault write here intentionally.
-        // The vault is a sync-only mirror — reconcileVault (called on every Dropbox
-        // sync cycle) keeps .md files up to date without hammering the disk on every keystroke.
-        triggerAutoSync();
-    }, [noteId]);
-
-    const debouncedSaveContent = useCallback(
-        (markdown: string) => {
-            pendingSaveRef.current = markdown;
-
-            // Sync contentBuffer immediately for cross-component consistency
-            // NOTE: PropertiesHeader dispatches keim_note_content_updated itself;
-            // the Milkdown body editor does NOT need to dispatch for plain typing
-            // (it affects body text, not properties).
-            if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
-            saveTimeoutRef.current = window.setTimeout(() => {
-                pendingSaveRef.current = null;
-                persistContent(markdown, noteRef.current);
-            }, 500);
-        },
-        [persistContent]
-    );
-
-    // On unmount: flush any pending debounced save immediately.
-    // The contentBuffer already preserved the text synchronously;
-    // this ensures the DB is also written ASAP.
-    useEffect(() => {
-        return () => {
-            const pending = pendingSaveRef.current;
-            if (pending !== null && saveTimeoutRef.current !== null) {
-                window.clearTimeout(saveTimeoutRef.current);
-                // Fire-and-forget — content_buffer is the safety net
-                persistContent(pending, noteRef.current);
-            }
-        };
-    }, [persistContent]);
-
-    // Title editing debouncer
-    const titleTimeoutRef = useRef<number | null>(null);
-
-    const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const newTitle = e.target.value;
-        setTitle(newTitle);
-
-        if (titleTimeoutRef.current) window.clearTimeout(titleTimeoutRef.current);
-        titleTimeoutRef.current = window.setTimeout(async () => {
-            const oldNote = await db.items.get(noteId);
-            const contentObj = await db.contents.get(noteId);
-
-            if (oldNote && oldNote.title !== newTitle && getStorageMode() === 'vault') {
-                try {
-                    const allItems = await db.items.toArray();
-                    const parentPath = getItemPath(oldNote.parentId, allItems);
-                    const oldPath = notePathFromTitle(oldNote.title, parentPath);
-                    const newPath = notePathFromTitle(newTitle, parentPath);
-
-                    if (oldPath !== newPath) {
-                        const { deleteFromVault } = await import('../lib/vault');
-                        await deleteFromVault(oldPath);
-                        await writeNoteToVault(newPath, contentObj?.content || '');
-                    }
-                } catch (err) {
-                    console.error('Failed to rename vault file from Editor', err);
-                }
-            }
-
-            await db.items.update(noteId, { title: newTitle, updated_at: Date.now() });
-            if (note && contentObj) {
-                const allItems = await db.items.toArray();
-                const fullPath = getFullPath(noteId, allItems);
-                updateSearchIndex(noteId, newTitle, contentObj.content, note.parentId, fullPath, note.icon, note.tags);
-            }
-            localStorage.setItem('keim_has_user_edits', 'true');
-            triggerAutoSync();
-        }, 500);
-    };
-
-    const titleInputRef = useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        const handleFocus = (e: CustomEvent) => {
-            if (e.detail === noteId && titleInputRef.current) {
-                titleInputRef.current.focus();
-                titleInputRef.current.select();
-            }
-        };
-        window.addEventListener('keim_focus_title', handleFocus as EventListener);
-        return () => window.removeEventListener('keim_focus_title', handleFocus as EventListener);
-    }, [noteId]);
-
-    if (!note || !editorReady) {
-        return (
-            <div className="h-full overflow-y-auto">
-                <div 
-                    className={`mx-auto w-full pb-64 animate-pulse mt-8 ${initialContent.includes('::dashboard') ? '' : 'px-6 md:px-12 lg:px-16'}`}
-                    style={{
-                        maxWidth: initialContent.includes('::dashboard') ? '100%' : '900px',
-                        paddingTop: window.innerWidth < 768 ? 'calc(5rem + var(--spacing-safe-top, 0px))' : 'calc(3rem + var(--spacing-safe-top, 0px))',
-                        ...(initialContent.includes('::dashboard') && { 
-                            paddingLeft: window.innerWidth < 768 ? '0px' : '80px', 
-                            paddingRight: window.innerWidth < 768 ? '0px' : '24px',
-                            maxWidth: window.innerWidth < 768 ? '100%' : '1600px',
-                        })
-                    }}
-                >
-                    {/* Title Skeleton */}
-                    <div className="h-10 bg-dark-bg/5 dark:bg-light-bg/5 rounded-lg w-2/3 mb-10"></div>
-                    
-                    {/* Body Skeletons */}
-                    <div className="space-y-4">
-                        <div className="h-4 bg-dark-bg/5 dark:bg-light-bg/5 rounded w-full"></div>
-                        <div className="h-4 bg-dark-bg/5 dark:bg-light-bg/5 rounded w-5/6"></div>
-                        <div className="h-4 bg-dark-bg/5 dark:bg-light-bg/5 rounded w-4/6"></div>
-                        <div className="h-4 bg-dark-bg/5 dark:bg-light-bg/5 rounded w-full"></div>
-                        <div className="h-4 bg-dark-bg/5 dark:bg-light-bg/5 rounded w-3/4"></div>
-                    </div>
-                </div>
-            </div>
-        );
+    if (loading) {
+        return <div className="flex-1 flex items-center justify-center text-dark-bg/40 dark:text-light-bg/40">Loading…</div>;
     }
 
-    // Handlers for conflict resolution banner
-    const handleKeepMine = () => {
-        // User keeps their local version — mark as saved to push it to cloud
-        setConflictPending(false);
-        const buffered = contentBuffer.get(noteId);
-        if (buffered !== undefined) {
-            persistContent(buffered, note);
-        }
-    };
-    const handleUseCloud = () => {
-        // User accepts cloud version — clear buffer and seamlessly update editor text
-        contentBuffer.delete(noteId);
-        setConflictPending(false);
-        db.contents.get(noteId).then(contentObj => {
-            const newContent = contentObj?.content || '';
-            window.dispatchEvent(new CustomEvent('keim_editor_replace_content', {
-                detail: { noteId, content: newContent }
-            }));
-        });
-    };
-
     return (
-        /* Full-height scroll container */
-        <div className="h-full overflow-y-auto">
-            {/* Notion-style: centered column, comfortable max-width, generous top padding */}
-            <div
-                className={`mx-auto w-full pb-64 ${initialContent.includes('::dashboard') ? '' : 'px-6 md:px-12 lg:px-16'}`}
-                style={{
-                    maxWidth: initialContent.includes('::dashboard') ? '100%' : '900px',
-                    paddingTop: window.innerWidth < 768 ? 'calc(5rem + var(--spacing-safe-top, 0px))' : 'calc(3rem + var(--spacing-safe-top, 0px))',
-                    ...(initialContent.includes('::dashboard') && { 
-                        // Desktop: 80px left, 24px right. Mobile: 0px.
-                        paddingLeft: window.innerWidth < 768 ? '0px' : '80px', 
-                        paddingRight: window.innerWidth < 768 ? '0px' : '24px',
-                        maxWidth: window.innerWidth < 768 ? '100%' : '1600px',
-                    })
-                }}
-            >
-                {/* ── Initial Sync Banner (first session sync, no lastSyncTime yet) ── */}
-                {syncStatus === 'syncing' && !lastSyncTime && (
-                    <div className="mb-6 px-4 py-3 rounded-lg bg-indigo-500/8 border border-indigo-500/15 flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
-                        <div className="flex items-center shrink-0">
-                            <l-mirage size="32" speed="2.5" color="rgb(129 140 248)" />
-                        </div>
-                        <p className="text-xs text-dark-bg/60 dark:text-light-bg/60 leading-tight">
-                            Syncing latest content from cloud — content may update shortly.
-                        </p>
-                    </div>
-                )}
-
-                {/* ── Conflict Banner ── */}
-                {conflictPending && (
-                    <div className="mb-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/25 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
-                        <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
-                                <Cloud size={16} className="text-amber-500" />
-                            </div>
-                            <div className="text-left">
-                                <h4 className="text-sm font-bold text-dark-bg dark:text-light-bg leading-tight">Cloud has a newer version</h4>
-                                <p className="text-[11px] text-dark-bg/60 dark:text-light-bg/60 leading-tight mt-0.5">You were editing while a newer version synced from another device.</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0 ml-auto">
-                            <button
-                                onClick={handleKeepMine}
-                                className="px-3 py-1.5 rounded-lg bg-dark-bg/8 dark:bg-light-bg/8 text-dark-bg dark:text-light-bg text-xs font-semibold hover:bg-dark-bg/15 dark:hover:bg-light-bg/15 transition-colors"
-                            >
-                                Keep mine
-                            </button>
-                            <button
-                                onClick={handleUseCloud}
-                                className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 transition-colors shadow-sm"
-                            >
-                                Use cloud version
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* ── Cloud Update Toast ── */}
-                {cloudUpdateToast && (
-                    <div className="mb-4 flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 animate-in fade-in duration-200">
-                        <CloudDownload size={13} strokeWidth={2} />
-                        <span className="font-medium">Note updated from cloud</span>
-                    </div>
-                )}
-
-                {/* ── Vault Locked Banner ── */}
-                {isVaultLocked && (
-                    <div className="mb-10 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-indigo-500/20">
-                                <Lock size={18} />
-                            </div>
-                            <div className="text-left">
-                                <h4 className="text-sm font-bold text-dark-bg dark:text-light-bg leading-tight">Vault is Locked (Read Only)</h4>
-                                <p className="text-[11px] opacity-70 leading-tight">Browser security requires re-granting access to your folder.</p>
-                            </div>
-                        </div>
-                        <button
-                            onClick={onUnlockVault}
-                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-500 text-white text-xs font-bold hover:bg-indigo-600 transition-all shadow-md active:scale-95 whitespace-nowrap"
-                        >
-                            Grant Access <ArrowRight size={14} />
-                        </button>
-                    </div>
-                )}
-
-                {/* ── Top Actions & Headers ── */}
-                <div className={`group flex flex-col items-start gap-1 mb-2 ${initialContent.includes('::dashboard') ? 'px-6 md:px-0' : ''}`}>
-                    {/* ── Icon Display (if set) ── */}
-                    {note.icon && (
-                        <div className="relative group/icon inline-block mb-2" ref={pickerRef}>
-                            <div
-                                className="text-6xl cursor-pointer select-none"
-                                onClick={() => setShowIconPicker(!showIconPicker)}
-                            >
-                                {note.icon}
-                            </div>
-                            <button
-                                onClick={() => handleIconChange(null)}
-                                className="opacity-0 group-hover/icon:opacity-100 absolute -top-1.5 -right-1.5 bg-light-bg dark:bg-dark-bg text-dark-bg/50 dark:text-light-bg/50 hover:text-red-500 rounded-full p-1.5 md:p-0.5 shadow-md border border-black/5 dark:border-white/10 z-10 transition-all scale-100 md:scale-75 md:group-hover/icon:scale-100"
-                            >
-                                <X size={10} />
-                            </button>
-                            {showIconPicker && (
-                                <div className="absolute z-50 top-full left-0 mt-2 shadow-xl rounded-lg border border-light-border dark:border-dark-border overflow-hidden">
-                                    <Suspense fallback={<div className="p-4 w-64 text-center text-sm opacity-50">Loading emojis...</div>}>
-                                        <EmojiPicker onEmojiClick={(e) => handleIconChange(e.emoji)} />
-                                    </Suspense>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* ── Action Buttons ── */}
-                    <div className="flex items-center gap-1 font-medium">
-                        {!note.icon && (
-                            <div className="relative" ref={pickerRef}>
-                                <button
-                                    onClick={() => setShowIconPicker(!showIconPicker)}
-                                    className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center gap-1.5 text-dark-bg/40 dark:text-light-bg/40 hover:text-dark-bg/60 dark:hover:text-light-bg/60 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 rounded px-3 py-2 md:px-2 md:py-1 text-sm font-medium"
-                                >
-                                    <SmilePlus size={16} />
-                                    Add icon
-                                </button>
-                                {showIconPicker && (
-                                    <div className="absolute z-50 top-full left-0 mt-2 shadow-xl rounded-lg border border-light-border dark:border-dark-border overflow-hidden">
-                                        <Suspense fallback={<div className="p-4 w-64 text-center text-sm opacity-50">Loading emojis...</div>}>
-                                            <EmojiPicker onEmojiClick={(e) => handleIconChange(e.emoji)} />
-                                        </Suspense>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        <div className="relative" ref={tagContainerRef}>
-                            <button
-                                onClick={() => setShowTagInput(!showTagInput)}
-                                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center gap-1.5 text-dark-bg/40 dark:text-light-bg/40 hover:text-dark-bg/60 dark:hover:text-light-bg/60 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5 rounded px-3 py-2 md:px-2 md:py-1 text-sm font-medium"
-                            >
-                                <Tag size={16} />
-                                Add tag
-                            </button>
-
-                            {showTagInput && (
-                                <div className="absolute z-50 top-full left-0 mt-1 bg-light-bg/85 dark:bg-[#1a1a1f]/80 backdrop-blur-xl shadow-2xl rounded-lg border border-black/5 dark:border-white/10 p-1">
-                                    <div className="flex items-center px-2 py-1 gap-1.5 relative">
-                                        <span className="text-dark-bg/40 dark:text-light-bg/40 font-medium">#</span>
-                                        <input
-                                            ref={tagInputRef}
-                                            type="text"
-                                            value={tagInputValue}
-                                            onChange={(e) => setTagInputValue(e.target.value)}
-                                            onKeyDown={handleAddTag}
-                                            placeholder="tag..."
-                                            className="bg-transparent border-none outline-none text-sm text-dark-bg dark:text-light-bg w-28 md:w-32"
-                                        />
-                                        {tagInputValue.trim() && (
-                                            <button
-                                                onClick={handleTagSubmit}
-                                                className="p-1 hover:bg-dark-bg/10 dark:hover:bg-light-bg/10 rounded transition-colors text-indigo-500 dark:text-indigo-400"
-                                                title="Add tag"
-                                            >
-                                                <Plus size={16} />
-                                            </button>
-                                        )}
-                                    </div>
-                                    {suggestedTags.length > 0 && (
-                                        <div
-                                            className="mt-1 border-t border-black/5 dark:border-white/10 pt-1.5 px-2 pb-1.5 flex flex-col gap-0.5"
-                                        >
-                                            {!tagInputValue && (
-                                                <div className="text-[10px] font-bold text-dark-bg/30 dark:text-light-bg/30 uppercase tracking-widest px-1.5 mb-1 select-none">Recent</div>
-                                            )}
-                                            {suggestedTags.map((tagMatch, idx) => (
-                                                <button
-                                                    key={tagMatch || idx}
-                                                    onClick={() => {
-                                                        setTagInputValue(tagMatch);
-                                                        tagInputRef.current?.focus();
-                                                    }}
-                                                    className={`w-full text-left text-xs rounded px-1.5 py-1.5 flex justify-between items-center group/sug ${idx === selectedSuggestionIndex
-                                                        ? 'bg-dark-bg/10 dark:bg-light-bg/10 text-dark-bg dark:text-light-bg'
-                                                        : 'text-dark-bg/70 dark:text-light-bg/70 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5'
-                                                        }`}
-                                                >
-                                                    <span className="font-medium">#{tagMatch}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
+            <div className="w-full max-w-[900px] mx-auto px-6 md:px-12 lg:px-16">
+                <div className="flex items-center gap-2 pt-16 md:pt-20 pb-2">
+                    <input
+                        value={title}
+                        onChange={handleTitleChange}
+                        onBlur={commitTitle}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }}
+                        placeholder="Note title"
+                        className="flex-1 bg-transparent text-2xl font-bold tracking-tight text-dark-bg dark:text-light-bg outline-none placeholder:text-dark-bg/30 dark:placeholder:text-light-bg/30"
+                    />
+                </div>
+                <div className="pb-2 flex items-center gap-2 text-xs text-dark-bg/40 dark:text-light-bg/40">
+                    <span className="font-mono">{parentPathOf(notePath) || 'root'}/{titleFromNotePath(notePath)}.md</span>
                 </div>
 
-                {/* ── Title ── */}
-                <input
-                    ref={titleInputRef}
-                    className={`w-full text-4xl font-bold bg-transparent border-none outline-none
-                               text-dark-bg dark:text-light-bg
-                               placeholder-dark-bg/30 dark:placeholder-light-bg/30
-                               mb-5 leading-tight tracking-tight
-                               ${initialContent.includes('::dashboard') ? 'px-6 md:px-0' : ''}`}
-                    style={{ fontFamily: 'inherit', letterSpacing: '-0.01em' }}
-                    value={title}
-                    onChange={handleTitleChange}
-                    placeholder="Untitled"
-                />
-
-                {/* ── Smart Properties Header ── */}
-                {smartSchema && (
-                    <div className={initialContent.includes('::dashboard') ? 'px-6 md:px-0' : ''}>
-                        <PropertiesHeader 
-                            schema={smartSchema}
-                            content={initialContent}
-                            noteId={noteId}
-                            onUpdateContent={(nc) => {
-                                contentBuffer.set(noteId, nc);
-                                debouncedSaveContent(nc);
-                            }}
-                            onSelectNote={onSelectNote}
-                        />
-                    </div>
-                )}
-
-                {/* ── Tags List (Below Title) ── */}
-                {note.tags && note.tags.length > 0 && (
-                    <div className={`flex flex-wrap gap-1.5 mb-6 ${initialContent.includes('::dashboard') ? 'px-6 md:px-0' : ''}`}>
-                        {note.tags.map((tag, i) => (
-                            <div key={`${tag}-${i}`} className="group/pill relative flex items-center bg-dark-bg/5 dark:bg-light-bg/5 text-dark-bg/70 dark:text-light-bg/70 px-2 py-1 md:py-0.5 rounded text-xs font-medium border border-dark-bg/2 dark:border-light-bg/2 transition-colors hover:bg-dark-bg/10 dark:hover:bg-light-bg/10">
-                                <span>#{tag}</span>
+                {linkedNotes.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 pb-2">
+                        <Link2 size={13} className="text-dark-bg/30 dark:text-light-bg/30 shrink-0" />
+                        {linkedNotes.map(({ title: lt, path }) => (
+                            path ? (
                                 <button
-                                    onClick={() => handleRemoveTag(tag)}
-                                    className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/pill:opacity-100 transition-all bg-light-bg dark:bg-[#1a1a1f] text-red-500 rounded-full p-1.5 md:p-0.5 shadow-md border border-black/5 dark:border-white/10 z-10 scale-100 md:scale-75 group-hover/pill:scale-100"
-                                    title={`Remove #${tag}`}
+                                    key={lt}
+                                    onClick={() => openLinked(path)}
+                                    className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 transition-colors"
+                                    title={`Open ${lt}`}
                                 >
-                                    <X size={10} />
+                                    {lt}
                                 </button>
-                            </div>
+                            ) : (
+                                <span key={lt} className="text-xs px-2 py-0.5 rounded-full bg-dark-bg/5 dark:bg-light-bg/5 text-dark-bg/30 dark:text-light-bg/30 line-through" title="Note not found">
+                                    {lt}
+                                </span>
+                            )
                         ))}
                     </div>
                 )}
+            </div>
 
-                {/* ── Editor body — same column, no extra wrappers ── */}
-                <div className="milkdown-wrapper" key={noteId}>
-                    <MilkdownProvider>
-                        <CrepeBody
-                            noteId={noteId}
-                            content={initialContent}
-                            onSave={debouncedSaveContent}
-                            onSelectNote={onSelectNote}
-                        />
-                    </MilkdownProvider>
-                </div>
+            <div className="relative flex-1">
+                <textarea
+                    ref={textareaRef}
+                    value={content}
+                    onChange={handleContentChange}
+                    onBlur={() => { setWikiQuery(null); persist(notePath, contentRef.current); }}
+                    onKeyDown={(e) => {
+                        if (wikiQuery !== null && linkedTitles.length > 0) {
+                            if (e.key === 'ArrowDown') { e.preventDefault(); setWikiActive(a => Math.min(a + 1, linkedTitles.length - 1)); return; }
+                            if (e.key === 'ArrowUp') { e.preventDefault(); setWikiActive(a => Math.max(a - 1, 0)); return; }
+                            if (e.key === 'Enter') { e.preventDefault(); insertWikiLink(linkedTitles[wikiActive]); return; }
+                            if (e.key === 'Escape') { e.preventDefault(); setWikiQuery(null); return; }
+                        }
+                    }}
+                    placeholder="Write your notes in plain Markdown…"
+                    spellCheck
+                    className="absolute inset-0 w-full max-w-[900px] mx-auto left-0 right-0 resize-none outline-none bg-transparent text-dark-bg dark:text-light-bg leading-relaxed px-6 md:px-12 lg:px-16 pb-64 pt-2 text-[15px] font-mono"
+                />
+
+                {wikiQuery !== null && linkedTitles.length > 0 && (
+                    <div className="absolute z-30 left-6 md:left-12 lg:left-16 top-[112px] md:top-[128px] w-72 max-w-[calc(100%-3rem)] bg-light-ui/95 dark:bg-dark-ui/95 backdrop-blur-xl border border-black/5 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden animate-scalein">
+                        <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-dark-bg/40 dark:text-light-bg/40 border-b border-black/5 dark:border-white/5">
+                            Link to note
+                        </div>
+                        <div className="max-h-56 overflow-y-auto py-1 scrollbar-hide">
+                            {linkedTitles.map((t, i) => (
+                                <button
+                                    key={t}
+                                    onMouseDown={(e) => { e.preventDefault(); insertWikiLink(t); }}
+                                    onMouseEnter={() => setWikiActive(i)}
+                                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors ${i === wikiActive ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400' : 'text-dark-bg/80 dark:text-light-bg/80 hover:bg-dark-bg/5 dark:hover:bg-light-bg/5'}`}
+                                >
+                                    <Link2 size={13} className="shrink-0 opacity-60" />
+                                    <span className="truncate">{t}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
+
+    function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
+        const v = e.target.value;
+        titleRef.current = v;
+        setTitle(v);
+        setSaving(true);
+    }
 }

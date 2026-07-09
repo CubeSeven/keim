@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand';
 
-export type AppStateStatus = 'loading' | 'welcome' | 'restore-vault' | 'needs-vault-permission' | 'ready';
+export type AppStateStatus = 'loading' | 'welcome' | 'ready';
 
 export interface AppSlice {
     appState: AppStateStatus;

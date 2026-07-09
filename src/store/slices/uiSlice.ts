@@ -5,18 +5,15 @@ export interface UiSlice {
     isSidebarOpen: boolean;
     toggleSidebar: () => void;
     setSidebarOpen: (isOpen: boolean) => void;
-    
+
     isSettingsOpen: boolean;
     setIsSettingsOpen: (isOpen: boolean) => void;
-    
-    settingsTab: 'general' | 'sync' | 'appearance';
-    setSettingsTab: (tab: 'general' | 'sync' | 'appearance') => void;
+
+    settingsTab: 'general' | 'appearance';
+    setSettingsTab: (tab: 'general' | 'appearance') => void;
 
     theme: 'light' | 'dark' | 'system';
     setTheme: (theme: 'light' | 'dark' | 'system') => void;
-
-    smartPopupState: { isOpen: boolean; folderId?: number; folderTitle?: string };
-    setSmartPopupState: (state: { isOpen: boolean; folderId?: number; folderTitle?: string }) => void;
 }
 
 export const createUiSlice: StateCreator<UiSlice> = (set) => ({
@@ -33,7 +30,7 @@ export const createUiSlice: StateCreator<UiSlice> = (set) => ({
 
     isSettingsOpen: false,
     setIsSettingsOpen: (isSettingsOpen) => set({ isSettingsOpen }),
-    
+
     settingsTab: 'general',
     setSettingsTab: (settingsTab) => set({ settingsTab }),
 
@@ -45,7 +42,4 @@ export const createUiSlice: StateCreator<UiSlice> = (set) => ({
         localStorage.setItem(KEYS.THEME, theme);
         set({ theme });
     },
-
-    smartPopupState: { isOpen: false },
-    setSmartPopupState: (smartPopupState) => set({ smartPopupState }),
 });

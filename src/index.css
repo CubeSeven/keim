@@ -22,302 +22,42 @@
     @apply bg-light-bg text-dark-bg dark:bg-dark-bg dark:text-light-bg antialiased transition-colors duration-200;
     font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
     overscroll-behavior-y: contain;
-    /* Prevent pull-to-refresh on mobile */
   }
 
-  /* Hide scrollbar for all elements */
   * {
     -ms-overflow-style: none;
-    /* IE and Edge */
     scrollbar-width: none;
-    /* Firefox */
   }
 
   *::-webkit-scrollbar {
     display: none;
-    /* Chrome, Safari and Opera */
   }
 }
 
-/* ============================================================ */
-/* Milkdown / Crepe — Notion-style polish                       */
-/* ============================================================ */
-
-/* --- Crepe design token overrides --- */
-:root,
-.light {
-  --crepe-color-background: transparent;
-  --crepe-color-surface: #ffffff;
-  --crepe-color-on-surface: #111111;
-  --crepe-color-border: rgba(0, 0, 0, 0.08);
-
-  /* Slash menu & tooltips */
-  --crepe-color-tooltip-bg: #ffffff;
-  --crepe-color-tooltip-fg: #111111;
-
-  /* Inline code */
-  --crepe-color-inline-code-bg: rgba(135, 131, 120, 0.15);
+/* Plain-text editor tweaks */
+textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  tab-size: 2;
 }
 
-.dark {
-  --crepe-color-background: transparent;
-  --crepe-color-surface: #26272C;
-  --crepe-color-on-surface: #e6e6e6;
-  --crepe-color-border: rgba(255, 255, 255, 0.08);
-  --crepe-color-tooltip-bg: #26272C;
-  --crepe-color-tooltip-fg: #e6e6e6;
-  --crepe-color-inline-code-bg: rgba(200, 200, 200, 0.12);
-  --color-card-bg: var(--color-dark-bg);
-}
+/* Lightweight CSS-only animations (replaces framer-motion) */
+@keyframes keimFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes keimRise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes keimScaleIn { from { opacity: 0; transform: scale(0.96) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 
-/* --- Outer wrapper fills the flex slot --- */
-.milkdown-wrapper {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow: visible;
-  /* Let slash menu escape */
-  position: relative;
-}
+.animate-fadein { animation: keimFadeIn 0.18s ease-out both; }
+.animate-rise { animation: keimRise 0.35s ease-out both; }
+.animate-scalein { animation: keimScaleIn 0.2s ease-out both; }
 
-/* --- The .milkdown ProseMirror host --- */
-.milkdown-wrapper .milkdown {
-  background: transparent !important;
-  box-shadow: none !important;
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif !important;
-  font-size: 1rem;
-  line-height: 1.7;
-  color: inherit;
-  flex: 1;
-  padding: 0 !important;
-}
-
-/* --- ProseMirror content area --- */
-.milkdown-wrapper .milkdown .ProseMirror {
-  outline: none;
-  padding: 0;
-  min-height: 200px;
-  color: inherit;
-  caret-color: currentColor;
-  word-break: break-word;
-  overflow-wrap: break-word;
-}
-
-.milkdown-wrapper .milkdown .ProseMirror img {
-  max-width: 100%;
-  height: auto;
-}
-
-/* Empty doc placeholder */
-.milkdown-wrapper .milkdown .ProseMirror p.is-empty::before,
-.milkdown-wrapper .milkdown .ProseMirror .is-empty::before {
-  color: #9b9a97;
-  content: attr(data-placeholder);
-  pointer-events: none;
-  position: absolute;
-}
-
-.dark .milkdown-wrapper .milkdown .ProseMirror p.is-empty::before,
-.dark .milkdown-wrapper .milkdown .ProseMirror .is-empty::before,
-.dark .crepe-placeholder::before {
-  color: rgba(255, 255, 255, 0.35) !important;
-}
-
-/* --- Typography — Notion-like --- */
-.milkdown-wrapper .ProseMirror h1,
-.milkdown-wrapper .ProseMirror h2,
-.milkdown-wrapper .ProseMirror h3,
-.milkdown-wrapper .ProseMirror h4,
-.milkdown-wrapper .ProseMirror h5,
-.milkdown-wrapper .ProseMirror h6 {
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif !important;
-}
-
-.milkdown-wrapper .ProseMirror h1 {
-  font-size: 1.875rem;
-  /* 30px */
-  font-weight: 700;
-  line-height: 1.3;
-  margin-top: 1.5rem;
-  margin-bottom: 0.25rem;
-  letter-spacing: -0.01em;
-}
-
-.milkdown-wrapper .ProseMirror h2 {
-  font-size: 1.375rem;
-  /* 22px */
-  font-weight: 700;
-  line-height: 1.3;
-  margin-top: 1.25rem;
-  margin-bottom: 0.25rem;
-}
-
-.milkdown-wrapper .ProseMirror h3 {
-  font-size: 1.125rem;
-  font-weight: 600;
-  line-height: 1.4;
-  margin-top: 1rem;
-  margin-bottom: 0.25rem;
-}
-
-.milkdown-wrapper .ProseMirror p {
-  margin-top: 0;
-  margin-bottom: 0.15rem;
-  font-size: 1rem;
-}
-
-.milkdown-wrapper .ProseMirror ul,
-.milkdown-wrapper .ProseMirror ol {
-  padding-left: 1.5rem;
-  margin: 0.25rem 0;
-}
-
-.milkdown-wrapper .ProseMirror li {
-  margin: 0.1rem 0;
-}
-
-.milkdown-wrapper .ProseMirror blockquote {
-  border-left: 3px solid rgba(55, 53, 47, 0.2);
-  margin: 0.5rem 0;
-  padding: 0.25rem 0.75rem;
-  color: #6b6b6b;
-}
-
-.dark .milkdown-wrapper .ProseMirror blockquote {
-  border-left-color: rgba(255, 255, 255, 0.2);
-  color: #999;
-}
-
-.milkdown-wrapper .ProseMirror code {
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  font-size: 0.875em;
-  background: var(--crepe-color-inline-code-bg);
-  border-radius: 3px;
-  padding: 0.1em 0.3em;
-}
-
-.milkdown-wrapper .ProseMirror pre {
-  background: rgba(135, 131, 120, 0.1);
-  border-radius: 6px;
-  padding: 1rem;
-  overflow-x: auto;
-  font-size: 0.875rem;
-}
-
-.dark .milkdown-wrapper .ProseMirror pre {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.milkdown-wrapper .ProseMirror hr {
-  border: none;
-  border-top: 1px solid rgba(55, 53, 47, 0.15);
-  margin: 1.5rem 0;
-}
-
-.dark .milkdown-wrapper .ProseMirror hr {
-  border-top-color: rgba(255, 255, 255, 0.12);
-}
-
-/* --- Improved link visibility in Dark Mode --- */
-.dark .milkdown-wrapper .ProseMirror a {
-  color: #60a5fa;
-  /* Light blue (Sky 400 equivalent) for high contrast */
-  text-decoration-color: rgba(96, 165, 250, 0.4);
-  text-underline-offset: 2px;
-}
-
-.dark .milkdown-wrapper .ProseMirror a:hover {
-  color: #93c5fd;
-  /* Even lighter blue (Sky 300) on hover */
-  text-decoration-color: #93c5fd;
-}
-
-/* --- Toolbar / Menu aesthetics — colors only, no layout overrides --- */
-.milkdown-wrapper [data-slash-menu],
-[class*="milkdown-toolbar"],
-[class*="crepe-toolbar"] {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
-}
-
-.milkdown .milkdown-block-handle {
-  z-index: 10 !important;
-}
-
-/* ============================================================ */
-/* react-day-picker — monochrome theme overrides                 */
-/* ============================================================ */
-
-:root {
-  --rdp-accent-color: #000;
-  --rdp-accent-background-color: rgba(0,0,0,0.07);
-}
-
-.dark {
-  --rdp-accent-color: #fff;
-  --rdp-accent-background-color: rgba(255,255,255,0.10);
-  color-scheme: dark;
-}
-
-/* Day picker base resets */
-.rdp-root {
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif !important;
-  font-size: 0.82rem !important;
-  color: inherit !important;
-}
-
-.dark .rdp-root {
-  --rdp-day_button-border-radius: 6px;
-}
-
-/* Days that have notes: dot indicator */
-.rdp-has-notes {
-  position: relative;
-  font-weight: 700;
-}
-
-.rdp-has-notes::after {
-  content: '';
-  position: absolute;
-  bottom: 3px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.5;
-}
-
-/* Dark mode: make rdp dropdowns readable */
-.dark .rdp-dropdown select {
-  background: #26272C;
-  color: #e6e6e6;
-}
-
-/* --- Inline Auto-Detection Features --- */
-
-.milkdown .temporal-chip {
-  padding: 0.25rem 0.75rem !important;
-  margin: 0 0.125rem;
-  position: relative;
-  z-index: 20;
-  pointer-events: auto;
-}
-
-.milkdown .wiki-link-chip {
-  padding: 0.25rem 0.75rem !important;
-  margin: 0 0.125rem;
-  position: relative;
-  z-index: 20;
-  pointer-events: auto;
-}
-
-.wiki-link-chip.ghost {
-  @apply opacity-60;
-}
-
-[data-type="temporal-chip"], [data-type="wiki-link"] {
-  display: inline-block;
-  vertical-align: middle;
+/* Saving spinner (dependency-free, replaces plain "saving…" text) */
+@keyframes keimSpin { to { transform: rotate(360deg); } }
+.save-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 9999px;
+    animation: keimSpin 0.7s linear infinite;
+    vertical-align: middle;
 }
